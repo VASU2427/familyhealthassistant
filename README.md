@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # 🩺 Family Health Assistant
 
 A premium, serverless, mobile-optimized Progressive Web App (PWA) designed to track, analyze, and manage family health records, medication schedules, and wearable vitals. Powered by real-time client-side requests to the **openFDA Database** and **Google Gemini AI**.
@@ -49,3 +50,7 @@ Since this is a fully static client-side application, you can deploy it to any s
 ## 🔒 Configuration
 
 *   **API Key**: Users can securely paste their Gemini API Key directly inside the app's **Settings Gear Modal** (top-right of the dashboard). The key is saved locally in the browser's encrypted storage and never sent to any third-party server other than Google's official Gemini endpoint.
+=======
+# familyhealthassistant
+Family Health Assistant
+>>>>>>> 702f67442d36f4bb9015b2ac1eedd77f20ae2972
