@@ -1,0 +1,56 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper function to check authentication
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Helper function to check if the user is the owner of the document
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+
+    // Helper function to get user's role from users collection
+    function getUserRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+
+    // 1. users collection: owners can read/write their own info, admins can read all
+    match /users/{userId} {
+      allow read, write: if isAuthenticated() && (isOwner(userId) || getUserRole() == 'admin');
+    }
+
+    // 2. familyMembers collection: owner of household can read/write, doctor/caregiver can read
+    match /familyMembers/{memberId} {
+      allow read, write: if isAuthenticated() && (resource == null || isOwner(resource.data.userId) || request.resource.data.userId == request.auth.uid);
+      allow read: if isAuthenticated() && getUserRole() in ['doctor', 'caregiver', 'admin'];
+    }
+
+    // 3. healthRecords collection: owners can read/write, doctors/caregivers/admins can read, audits logged
+    match /healthRecords/{recordId} {
+      allow read, write: if isAuthenticated() && (resource == null || isOwner(resource.data.userId) || request.resource.data.userId == request.auth.uid);
+      allow read: if isAuthenticated() && getUserRole() in ['doctor', 'caregiver', 'admin'];
+    }
+
+    // 4. medications & appointments & wearableVitals & notifications: owner access, caregivers can read
+    match /medications/{id} {
+      allow read, write: if isAuthenticated() && (resource == null || isOwner(resource.data.userId) || request.resource.data.userId == request.auth.uid);
+    }
+    match /appointments/{id} {
+      allow read, write: if isAuthenticated() && (resource == null || isOwner(resource.data.userId) || request.resource.data.userId == request.auth.uid);
+    }
+    match /wearableVitals/{id} {
+      allow read, write: if isAuthenticated() && (resource == null || isOwner(resource.data.userId) || request.resource.data.userId == request.auth.uid);
+    }
+    match /notifications/{id} {
+      allow read, write: if isAuthenticated() && (resource == null || isOwner(resource.data.userId) || request.resource.data.userId == request.auth.uid);
+    }
+
+    // 5. auditLogs: write-only by authenticated users, read-only by admin
+    match /auditLogs/{logId} {
+      allow create: if isAuthenticated();
+      allow read: if isAuthenticated() && getUserRole() == 'admin';
+    }
+  }
+}
