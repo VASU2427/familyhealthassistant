@@ -116,7 +116,8 @@ def main():
 """
     
     # Save helper HTML file in the served directory
-    helper_path = os.path.join("C:/Users/srinivas/.gemini/antigravity/scratch/Projects/Family Health Assistant", "mobile_connection_helper.html")
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    helper_path = os.path.join(script_dir, "mobile_connection_helper.html")
     with open(helper_path, "w", encoding="utf-8") as f:
         f.write(html_content)
         
