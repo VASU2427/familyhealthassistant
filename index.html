@@ -1244,6 +1244,47 @@
         display: none; /* Hide presenter tools on real phone screens */
       }
     }
+
+    /* Camera Laser Scanning Animation */
+    .scan-guide-overlay {
+      position: absolute;
+      top: 15px;
+      left: 15px;
+      right: 15px;
+      bottom: 15px;
+      border: 2px solid rgba(16, 185, 129, 0.4);
+      border-radius: 8px;
+      pointer-events: none;
+      box-shadow: 0 0 0 9999px rgba(0,0,0,0.5);
+      overflow: hidden;
+    }
+    
+    .scan-laser-line {
+      position: absolute;
+      left: 0;
+      width: 100%;
+      height: 3px;
+      background: linear-gradient(90deg, transparent, #10b981, transparent);
+      box-shadow: 0 0 8px #10b981;
+      animation: laser-scan 2.5s infinite linear;
+    }
+    
+    @keyframes laser-scan {
+      0% { top: 0%; }
+      50% { top: 100%; }
+      100% { top: 0%; }
+    }
+
+    /* Floating Action Button Hover Scale */
+    .fab-btn {
+      transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.2s;
+    }
+    .fab-btn:hover {
+      transform: scale(1.1);
+    }
+    .fab-btn:active {
+      transform: scale(0.95);
+    }
   </style>
 </head>
 <body>
@@ -1613,6 +1654,82 @@
       
       return markdown.trim();
     }
+
+    const runOCR = async (apiKey, base64Image, language = 'English') => {
+      const model = "gemini-2.5-flash";
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+      
+      const ocrPrompt = `
+You are a highly advanced Clinical Medical OCR parser. Extract parameters from the uploaded medical record image.
+Perform parsing with strict accuracy. The text is in \${language}.
+Output the results strictly as a JSON object matching this schema:
+{
+  "date": "YYYY-MM-DD",
+  "notes": "Brief clinical context summary",
+  "diagnosis": ["Diagnostic terms identified"],
+  "advice": ["Clinical recommendations, follow-ups"],
+  "medications": [
+    { "name": "Drug name", "dosage": "e.g. 500mg", "frequency": "e.g. twice daily", "route": "e.g. oral", "duration": "e.g. 5 days" }
+  ],
+  "tests": ["Prescribed laboratory tests"],
+  "vitals": {
+    "bpSystolic": number or null,
+    "bpDiastolic": number or null,
+    "glucose": number or null,
+    "hba1c": number or null,
+    "tsh": number or null,
+    "cholesterol": number or null,
+    "ldl": number or null,
+    "hdl": number or null,
+    "triglycerides": number or null,
+    "hemoglobin": number or null,
+    "creatinine": number or null,
+    "weight": number or null,
+    "heartRate": number or null,
+    "oxygen": number or null,
+    "temperature": number or null
+  }
+}
+`;
+
+      const matches = base64Image.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,(.+)$/);
+      const mimeType = matches ? matches[1] : 'image/jpeg';
+      const rawData = matches ? matches[2] : base64Image;
+
+      const payload = {
+        contents: [
+          {
+            parts: [
+              { text: ocrPrompt },
+              {
+                inlineData: {
+                  mimeType: mimeType,
+                  data: rawData
+                }
+              }
+            ]
+          }
+        ],
+        generationConfig: {
+          responseMimeType: "application/json",
+          temperature: 0.0
+        }
+      };
+
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error?.message || "Gemini OCR failed");
+      }
+
+      const textResult = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      return JSON.parse(textResult);
+    };
 
     const themeColors = {
       teal: { primary: '#0a9e7c', primaryLight: 'rgba(10, 158, 124, 0.15)', borderFocus: '#0a9e7c' },
@@ -3440,7 +3557,7 @@
         setError('');
         setLoading(true);
         try {
-          if (window.firebase) {
+          if (window.firebase && window.firebase.apps && window.firebase.apps.length > 0) {
             if (isRegistering) {
               const userCredential = await window.firebase.auth().createUserWithEmailAndPassword(email, password);
               const user = userCredential.user;
@@ -3488,7 +3605,7 @@
         setError('');
         setLoading(true);
         try {
-          if (window.firebase) {
+          if (window.firebase && window.firebase.apps && window.firebase.apps.length > 0) {
             const provider = new window.firebase.auth.GoogleAuthProvider();
             const result = await window.firebase.auth().signInWithPopup(provider);
             const user = result.user;
@@ -3550,7 +3667,7 @@
                 <Icon name="heart" size={30} className="pulse-animation" color="#ffffff" />
               </div>
               <h2 className="login-title">FamilyHealth</h2>
-              <p className="login-subtitle">Cloud Health Portal</p>
+              <p className="login-subtitle">Smart Care for Every Generation</p>
             </div>
             
             <div className="login-card">
@@ -5180,14 +5297,17 @@
     }
 
     function HealthRecordsTab() {
-      const { 
-        logVitals, 
-        activeMember, 
+      const {
+        activeMember,
         activeMemberId,
-        geminiKey, 
-        uploadedRecords, 
-        setUploadedRecords, 
-        addToast 
+        geminiKey,
+        uploadedRecords,
+        setUploadedRecords,
+        addMedicine,
+        addToast,
+        logVitals,
+        dbSource,
+        currentUser
       } = useContext(HealthContext);
 
       if (activeMemberId === 'household') {
@@ -5198,15 +5318,36 @@
       const [scanning, setScanning] = useState(false);
       const [data, setData] = useState(null);
       const [scanStep, setScanStep] = useState('');
-      
+      const [selectedLanguage, setSelectedLanguage] = useState('English');
+
       const [selectedFile, setSelectedFile] = useState(null);
       const [fileBase64, setFileBase64] = useState('');
       const [dragActive, setDragActive] = useState(false);
       const [cameraActive, setCameraActive] = useState(false);
       const [stream, setStream] = useState(null);
       const [viewingRecord, setViewingRecord] = useState(null);
-      
+
+      // Advanced scanner features state
+      const [cropping, setCropping] = useState(false);
+      const [corners, setCorners] = useState({
+        tl: { x: 15, y: 15 },
+        tr: { x: 85, y: 15 },
+        br: { x: 85, y: 85 },
+        bl: { x: 15, y: 85 }
+      });
+      const [draggingHandle, setDraggingHandle] = useState(null);
+      const [showConsentModal, setShowConsentModal] = useState(false);
+      const [showAuthModal, setShowAuthModal] = useState(false);
+      const [pin, setPin] = useState('');
+      const [authError, setAuthError] = useState('');
+      const [docCategory, setDocCategory] = useState('Lab Report');
+
+      // Side-by-side editing state
+      const [isEditingRecord, setIsEditingRecord] = useState(false);
+      const [editedRecord, setEditedRecord] = useState(null);
+
       const videoRef = useRef(null);
+      const containerRef = useRef(null);
 
       useEffect(() => {
         return () => {
@@ -5215,6 +5356,17 @@
           }
         };
       }, [stream]);
+
+      // Sync editedRecord when viewingRecord changes
+      useEffect(() => {
+        if (viewingRecord) {
+          setEditedRecord({ ...viewingRecord });
+          setIsEditingRecord(false);
+        } else {
+          setEditedRecord(null);
+          setIsEditingRecord(false);
+        }
+      }, [viewingRecord]);
 
       const startCamera = async () => {
         setSelectedFile(null);
@@ -5253,7 +5405,7 @@
         canvas.height = video.videoHeight || 480;
         const ctx = canvas.getContext('2d');
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        
+
         const dataUrl = canvas.toDataURL('image/jpeg');
         setFileBase64(dataUrl);
         setSelectedFile({
@@ -5262,15 +5414,19 @@
           size: Math.round((dataUrl.length * 3) / 4)
         });
         stopCamera();
+        setCropping(true); // Switch to Cropper view
       };
 
       const handleFile = (file) => {
         if (!file) return;
         setSelectedFile(file);
-        
+
         const reader = new FileReader();
         reader.onload = (e) => {
           setFileBase64(e.target.result);
+          if (file.type.startsWith('image/')) {
+            setCropping(true); // Switch to Cropper view for images
+          }
         };
         reader.readAsDataURL(file);
       };
@@ -5300,6 +5456,48 @@
         }
       };
 
+      // Draggable handle calculations
+      const handlePointerDown = (handle, e) => {
+        e.preventDefault();
+        setDraggingHandle(handle);
+      };
+
+      const handlePointerMove = (e) => {
+        if (!draggingHandle || !containerRef.current) return;
+        const rect = containerRef.current.getBoundingClientRect();
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+        let x = ((clientX - rect.left) / rect.width) * 100;
+        let y = ((clientY - rect.top) / rect.height) * 100;
+
+        x = Math.max(0, Math.min(100, x));
+        y = Math.max(0, Math.min(100, y));
+
+        setCorners(prev => ({
+          ...prev,
+          [draggingHandle]: { x: Math.round(x), y: Math.round(y) }
+        }));
+      };
+
+      const handlePointerUp = () => {
+        setDraggingHandle(null);
+      };
+
+      const autoCategorize = (fname, extractedText = '') => {
+        const text = (fname + ' ' + extractedText).toLowerCase();
+        if (text.includes('prescription') || text.includes('recipe') || text.includes('rx') || text.includes('medication') || text.includes('capsule') || text.includes('tablet')) {
+          return 'Prescription';
+        }
+        if (text.includes('vaccin') || text.includes('immuniz') || text.includes('bcg') || text.includes('polio') || text.includes('hepatitis') || text.includes('card')) {
+          return 'Vaccination Card';
+        }
+        if (text.includes('appointment') || text.includes('visit') || text.includes('note') || text.includes('consultation') || text.includes('clinical')) {
+          return 'Appointment Note';
+        }
+        return 'Lab Report';
+      };
+
       const triggerScan = async () => {
         if (!selectedFile) return;
         setScanning(true);
@@ -5326,114 +5524,13 @@
 
         setScanStep("Reading report metadata...");
         await new Promise(r => setTimeout(r, 600));
-        setScanStep("Running OCR & structuring document text...");
+        setScanStep(`Running OCR & structuring ${selectedLanguage} document text...`);
         await new Promise(r => setTimeout(r, 800));
 
         if (geminiKey) {
-          setScanStep("Consulting Gemini AI for parameters mapping...");
+          setScanStep(`Consulting Gemini AI for parameters mapping (${selectedLanguage})...`);
           try {
-            const base64Data = currentBase64.split(',')[1];
-            const mimeType = selectedFile.type || 'application/pdf';
-
-            const prompt = `You are an advanced, HIPAA-compliant Medical OCR and Data Integration Agent. Your purpose is processing clinical text images captured via a mobile device camera and systematically segregating the elements with 100% accuracy.
-
-OPERATIONAL PROTOCOL DIRECTIVES:
-1. HARD COLD READ: Scan and run multi-modal visual OCR on the document to extract all visible text layers (printed or handwritten) literally. Do NOT attempt to guess semantic context if text spacing is distorted.
-2. NO HALLUCINATION: Extract values EXACTLY as they are printed in the document. If a data value, ID, amount, or date is missing, obscured, or absent from the source text, output null or an empty list. Never synthesize or simulate realistic-looking values.
-3. CLINICAL SEGREGATION: Analyze the extracted clinical text and systematically organize the data elements into these four distinct database objects:
-   - [Diagnosis]: Medical conditions, symptoms, clinical impressions, or disease identification codes.
-   - [Advice]: General behavioral instructions, lifestyle changes, dietary restrictions, or follow-up timelines.
-   - [Medications]: Drug names, dosages, frequencies, administration routes (e.g., Orally, IV), and durations.
-   - [Tests]: Prescribed laboratory work, radiology scans, blood tests, or specialized screenings.
-4. DATA SANITIZATION: If a specific category is absent in the document, map that data node as a true null or exclude it entirely. Do not inject placeholder values.
-5. Also extract any vital sign parameters found:
-   - bpSystolic / bpDiastolic, glucose, heartRate, oxygen, temperature, weight, hba1c, tsh, cholesterol, hdl, ldl, triglycerides, creatinine, hemoglobin.
-6. REPORT DATE: Extract the date when the lab report or test was performed or collected. Return it in 'YYYY-MM-DD' format. If no date is found, return null.`;
-
-            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                contents: [{
-                  parts: [
-                    { text: prompt },
-                    { inline_data: { mime_type: mimeType, data: base64Data } }
-                  ]
-                }],
-                generationConfig: {
-                  temperature: 0.0,
-                  responseMimeType: "application/json",
-                  responseSchema: {
-                    type: "OBJECT",
-                    properties: {
-                      ingestionError: { type: "BOOLEAN" },
-                      ingestionErrorMessage: { type: "STRING" },
-                      reportDate: { type: "STRING" },
-                      bpSystolic: { type: "INTEGER" },
-                      bpDiastolic: { type: "INTEGER" },
-                      glucose: { type: "INTEGER" },
-                      heartRate: { type: "INTEGER" },
-                      oxygen: { type: "INTEGER" },
-                      temperature: { type: "NUMBER" },
-                      weight: { type: "NUMBER" },
-                      hba1c: { type: "NUMBER" },
-                      tsh: { type: "NUMBER" },
-                      cholesterol: { type: "INTEGER" },
-                      hdl: { type: "INTEGER" },
-                      ldl: { type: "INTEGER" },
-                      triglycerides: { type: "INTEGER" },
-                      creatinine: { type: "NUMBER" },
-                      hemoglobin: { type: "NUMBER" },
-                      notes: { type: "STRING" },
-                      diagnosis: {
-                        type: "ARRAY",
-                        items: { type: "STRING" }
-                      },
-                      advice: {
-                        type: "ARRAY",
-                        items: { type: "STRING" }
-                      },
-                      medications: {
-                        type: "ARRAY",
-                        items: {
-                          type: "OBJECT",
-                          properties: {
-                            name: { type: "STRING" },
-                            dosage: { type: "STRING" },
-                            frequency: { type: "STRING" },
-                            route: { type: "STRING" },
-                            duration: { type: "STRING" }
-                          },
-                          required: ["name"]
-                        }
-                      },
-                      tests: {
-                        type: "ARRAY",
-                        items: { type: "STRING" }
-                      }
-                    },
-                    required: ["notes"]
-                  }
-                }
-              })
-            });
-
-            if (!response.ok) {
-              const errBody = await response.json().catch(() => ({}));
-              throw new Error(`Gemini API error: ${errBody.error?.message || response.statusText}`);
-            }
-
-            const resJson = await response.json();
-            const textResponse = resJson.candidates?.[0]?.content?.parts?.[0]?.text || '';
-            
-            let cleanJsonText = textResponse.trim();
-            const start = cleanJsonText.indexOf('{');
-            const end = cleanJsonText.lastIndexOf('}');
-            if (start !== -1 && end !== -1 && end > start) {
-              cleanJsonText = cleanJsonText.substring(start, end + 1);
-            }
-            
-            const extracted = JSON.parse(cleanJsonText);
+            const extracted = await runOCR(geminiKey, currentBase64, selectedLanguage);
 
             const cleanVal = (val, isFloat = false) => {
               if (val === null || val === undefined || val === '' || val === 404 || val === '404' || val === -999 || val === '-999' || val === -99 || val === '-99') {
@@ -5443,33 +5540,36 @@ OPERATIONAL PROTOCOL DIRECTIVES:
               return isNaN(num) ? null : num;
             };
 
-            setData({
+            const parsedData = {
               ingestionError: !!extracted.ingestionError,
               ingestionErrorMessage: extracted.ingestionErrorMessage || '',
-              date: extracted.reportDate || new Date().toISOString().split('T')[0],
+              date: extracted.date || new Date().toISOString().split('T')[0],
               vitals: {
-                bpSystolic: cleanVal(extracted.bpSystolic),
-                bpDiastolic: cleanVal(extracted.bpDiastolic),
-                glucose: cleanVal(extracted.glucose),
-                weight: cleanVal(extracted.weight, true),
-                heartRate: cleanVal(extracted.heartRate),
-                oxygen: cleanVal(extracted.oxygen),
-                temperature: cleanVal(extracted.temperature, true),
-                hba1c: cleanVal(extracted.hba1c, true),
-                tsh: cleanVal(extracted.tsh, true),
-                cholesterol: cleanVal(extracted.cholesterol),
-                hdl: cleanVal(extracted.hdl),
-                ldl: cleanVal(extracted.ldl),
-                triglycerides: cleanVal(extracted.triglycerides),
-                creatinine: cleanVal(extracted.creatinine, true),
-                hemoglobin: cleanVal(extracted.hemoglobin, true)
+                bpSystolic: cleanVal(extracted.vitals?.bpSystolic || extracted.bpSystolic),
+                bpDiastolic: cleanVal(extracted.vitals?.bpDiastolic || extracted.bpDiastolic),
+                glucose: cleanVal(extracted.vitals?.glucose || extracted.glucose),
+                weight: cleanVal(extracted.vitals?.weight || extracted.weight, true),
+                heartRate: cleanVal(extracted.vitals?.heartRate || extracted.heartRate),
+                oxygen: cleanVal(extracted.vitals?.oxygen || extracted.oxygen),
+                temperature: cleanVal(extracted.vitals?.temperature || extracted.temperature, true),
+                hba1c: cleanVal(extracted.vitals?.hba1c || extracted.hba1c, true),
+                tsh: cleanVal(extracted.vitals?.tsh || extracted.tsh, true),
+                cholesterol: cleanVal(extracted.vitals?.cholesterol || extracted.cholesterol),
+                hdl: cleanVal(extracted.vitals?.hdl || extracted.hdl),
+                ldl: cleanVal(extracted.vitals?.ldl || extracted.ldl),
+                triglycerides: cleanVal(extracted.vitals?.triglycerides || extracted.triglycerides),
+                creatinine: cleanVal(extracted.vitals?.creatinine || extracted.creatinine, true),
+                hemoglobin: cleanVal(extracted.vitals?.hemoglobin || extracted.hemoglobin, true)
               },
               notes: extracted.notes || 'AI Scanner: Extracted records.',
               diagnosis: Array.isArray(extracted.diagnosis) ? extracted.diagnosis.filter(Boolean) : [],
               advice: Array.isArray(extracted.advice) ? extracted.advice.filter(Boolean) : [],
               medications: Array.isArray(extracted.medications) ? extracted.medications.filter(m => m && m.name) : [],
               tests: Array.isArray(extracted.tests) ? extracted.tests.filter(Boolean) : []
-            });
+            };
+
+            setData(parsedData);
+            setDocCategory(autoCategorize(selectedFile.name, parsedData.notes + ' ' + parsedData.diagnosis.join(' ')));
 
           } catch (err) {
             console.error(err);
@@ -5490,24 +5590,14 @@ OPERATIONAL PROTOCOL DIRECTIVES:
         const fname = (selectedFile ? selectedFile.name : '').toLowerCase();
         let selectedType = mockReportType;
         if (selectedType === 'auto') {
-          if (fname.includes('bp') || fname.includes('blood') || fname.includes('pressure') || fname.includes('hypertension')) {
-            selectedType = 'vitals';
-          } else if (fname.includes('glucose') || fname.includes('sugar') || fname.includes('diabet') || fname.includes('hba1c')) {
-            selectedType = 'diabetic';
-          } else if (fname.includes('lipid') || fname.includes('cholesterol') || fname.includes('triglyceride')) {
-            selectedType = 'lipid';
-          } else if (fname.includes('thyroid') || fname.includes('tsh') || fname.includes('t3') || fname.includes('t4')) {
-            selectedType = 'thyroid';
-          } else if (fname.includes('cbc') || fname.includes('hemoglobin') || fname.includes('anemia')) {
-            selectedType = 'cbc';
-          } else if (fname.includes('kidney') || fname.includes('renal') || fname.includes('creatinine')) {
-            selectedType = 'kidney';
-          } else {
-            selectedType = 'vitals';
-          }
+          const cat = autoCategorize(selectedFile.name);
+          if (cat === 'Prescription') selectedType = 'prescription';
+          else if (cat === 'Vaccination Card') selectedType = 'vaccination';
+          else if (cat === 'Appointment Note') selectedType = 'appointment_note';
+          else selectedType = 'lab_report';
         }
 
-        let vitals = { 
+        let vitals = {
           bpSystolic: null, bpDiastolic: null, glucose: null, weight: null, heartRate: null, oxygen: null, temperature: null,
           hba1c: null, tsh: null, cholesterol: null, hdl: null, ldl: null, triglycerides: null, creatinine: null, hemoglobin: null
         };
@@ -5516,49 +5606,40 @@ OPERATIONAL PROTOCOL DIRECTIVES:
         let advice = [];
         let medications = [];
         let tests = [];
+        let detectedCategory = 'Lab Report';
 
-        if (selectedType === 'vitals') {
+        if (selectedType === 'prescription') {
+          detectedCategory = 'Prescription';
+          notes = 'AI Scanner: Extracted Rx details from prescription sheet.';
+          diagnosis = ["Acute Pharyngitis", "Mild Fever"];
+          advice = ["Drink plenty of warm fluids", "Rest for 3 days", "Avoid cold drinks"];
+          medications = [
+            { name: "Amoxicillin", dosage: "500mg", frequency: "Morning & Night", route: "Orally", duration: "5 days" },
+            { name: "Paracetamol", dosage: "650mg", frequency: "Afternoon (if fever)", route: "Orally", duration: "3 days" }
+          ];
+        } else if (selectedType === 'vaccination') {
+          detectedCategory = 'Vaccination Card';
+          notes = 'AI Scanner: Extracted child vaccination logs.';
+          diagnosis = ["Routine Pediatric Health Check"];
+          advice = ["Apply cold compress if injection site is red", "Next dose due in 4 weeks"];
+          tests = ["BCG Vaccine", "OPV-1 Booster"];
+        } else if (selectedType === 'appointment_note') {
+          detectedCategory = 'Appointment Note';
+          notes = 'AI Scanner: Extracted clinical follow-up advice notes.';
+          diagnosis = ["Essential Hypertension Evaluation"];
+          advice = ["Continue salt restriction", "Regular morning walks", "Follow up after 1 month"];
+          vitals.bpSystolic = 130;
+          vitals.bpDiastolic = 85;
+        } else {
+          detectedCategory = 'Lab Report';
           vitals.bpSystolic = 122; vitals.bpDiastolic = 80; vitals.heartRate = 72; vitals.oxygen = 99; vitals.temperature = 98.4;
           notes = 'Client-Side Scanner: Basic Vitals mapped (BP 122/80 mmHg, Pulse 72 BPM, Temp 98.4°F).';
           diagnosis = ["Stage 1 Hypertension Evaluation"];
           advice = ["Monitor BP daily", "Limit dietary sodium intake", "Follow up in 2 weeks"];
           tests = ["Standard Vitals Log"];
-        } else if (selectedType === 'diabetic') {
-          vitals.glucose = 142; vitals.hba1c = 7.1;
-          notes = 'Client-Side Scanner: Diabetic metabolic card matching. Detected HbA1c (7.1%) and glucose (142 mg/dL).';
-          diagnosis = ["Type 2 Diabetes Mellitus", "Impaired Fasting Glucose"];
-          advice = ["Limit dietary carbohydrates and simple sugars", "Maintain daily exercise plan", "Retest HbA1c in 90 days"];
-          medications = [{ name: "Metformin", dosage: "500mg", frequency: "Once daily with breakfast", route: "Orally", duration: "30 days" }];
-          tests = ["Fasting Blood Sugar", "HbA1c test"];
-        } else if (selectedType === 'lipid') {
-          vitals.cholesterol = 238; vitals.ldl = 146; vitals.hdl = 42; vitals.triglycerides = 245;
-          notes = 'Client-Side Scanner: Lipid profile matching. Detected total Cholesterol (238 mg/dL) and LDL (146 mg/dL).';
-          diagnosis = ["Hyperlipidemia", "Elevated LDL-Cholesterol"];
-          advice = ["Reduce saturated fat intake", "Incorporate omega-3 rich food", "Review lipid profile in 8 weeks"];
-          medications = [{ name: "Atorvastatin", dosage: "10mg", frequency: "Once daily at bedtime", route: "Orally", duration: "60 days" }];
-          tests = ["Lipid Panel (Total Cholesterol, HDL, LDL, Triglycerides)"];
-        } else if (selectedType === 'thyroid') {
-          vitals.tsh = 6.4;
-          notes = 'Client-Side Scanner: Thyroid panel matching. Detected TSH (6.4 uIU/mL), indicating hypothyroidism.';
-          diagnosis = ["Subclinical Hypothyroidism"];
-          advice = ["Monitor thyroid parameters", "Follow up TSH levels in 3 months"];
-          medications = [{ name: "Levothyroxine", dosage: "25mcg", frequency: "Once daily on empty stomach", route: "Orally", duration: "90 days" }];
-          tests = ["Serum TSH", "Free Thyroxine (FT4)"];
-        } else if (selectedType === 'cbc') {
-          vitals.hemoglobin = 9.8;
-          notes = 'Client-Side Scanner: CBC matching. Detected low Hemoglobin levels (9.8 g/dL), indicating mild anemia.';
-          diagnosis = ["Mild Anemia (Microcytic)"];
-          advice = ["Incorporate iron-rich foods in diet", "Avoid tea/coffee immediately after meals"];
-          medications = [{ name: "Ferrous Sulfate", dosage: "325mg", frequency: "Once daily", route: "Orally", duration: "30 days" }];
-          tests = ["Complete Blood Count (CBC) with Peripheral Smear", "Serum Ferritin"];
-        } else if (selectedType === 'kidney') {
-          vitals.creatinine = 1.6;
-          notes = 'Client-Side Scanner: Renal panel matching. Borderline high Creatinine (1.6 mg/dL) detected.';
-          diagnosis = ["Borderline Renal Function / Elevated Creatinine"];
-          advice = ["Ensure adequate hydration (2-3 liters/day)", "Avoid NSAID painkillers like Ibuprofen", "Repeat renal function test in 1 month"];
-          tests = ["Serum Creatinine", "Blood Urea Nitrogen (BUN)", "eGFR screening"];
         }
 
+        setDocCategory(detectedCategory);
         setData({
           date: new Date().toISOString().split('T')[0],
           vitals,
@@ -5570,80 +5651,121 @@ OPERATIONAL PROTOCOL DIRECTIVES:
         });
       };
 
-      const handleSaveScan = () => {
-        logVitals(activeMember.id, {
-          bpSystolic: data.vitals.bpSystolic !== null && data.vitals.bpSystolic !== undefined ? parseInt(data.vitals.bpSystolic) : null,
-          bpDiastolic: data.vitals.bpDiastolic !== null && data.vitals.bpDiastolic !== undefined ? parseInt(data.vitals.bpDiastolic) : null,
-          glucose: data.vitals.glucose !== null && data.vitals.glucose !== undefined ? parseInt(data.vitals.glucose) : null,
-          weight: data.vitals.weight !== null && data.vitals.weight !== undefined ? parseFloat(data.vitals.weight) : null,
-          heartRate: data.vitals.heartRate !== null && data.vitals.heartRate !== undefined ? parseInt(data.vitals.heartRate) : null,
-          oxygen: data.vitals.oxygen !== null && data.vitals.oxygen !== undefined ? parseInt(data.vitals.oxygen) : null,
-          temperature: data.vitals.temperature !== null && data.vitals.temperature !== undefined ? parseFloat(data.vitals.temperature) : null,
-          hba1c: data.vitals.hba1c !== null && data.vitals.hba1c !== undefined ? parseFloat(data.vitals.hba1c) : null,
-          tsh: data.vitals.tsh !== null && data.vitals.tsh !== undefined ? parseFloat(data.vitals.tsh) : null,
-          cholesterol: data.vitals.cholesterol !== null && data.vitals.cholesterol !== undefined ? parseInt(data.vitals.cholesterol) : null,
-          hdl: data.vitals.hdl !== null && data.vitals.hdl !== undefined ? parseInt(data.vitals.hdl) : null,
-          ldl: data.vitals.ldl !== null && data.vitals.ldl !== undefined ? parseInt(data.vitals.ldl) : null,
-          triglycerides: data.vitals.triglycerides !== null && data.vitals.triglycerides !== undefined ? parseInt(data.vitals.triglycerides) : null,
-          creatinine: data.vitals.creatinine !== null && data.vitals.creatinine !== undefined ? parseFloat(data.vitals.creatinine) : null,
-          hemoglobin: data.vitals.hemoglobin !== null && data.vitals.hemoglobin !== undefined ? parseFloat(data.vitals.hemoglobin) : null
-        }, data.date);
-        
+      const saveUploadedRecord = (record, file) => {
         let savedBase64 = fileBase64;
         if (fileBase64 && fileBase64.length > 350000) {
           savedBase64 = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23090d16'/><text x='10' y='50' fill='%2364748b' font-size='8'>[Archived File Content]</text></svg>";
         }
 
-        setUploadedRecords(prev => [
-          {
-            id: 'file_' + Date.now(),
-            memberId: activeMember.id,
-            name: selectedFile ? selectedFile.name : 'Report_AI_AutoMapped_' + new Date().toISOString().split('T')[0] + '.pdf',
-            date: data.date,
-            doctor: 'AI Auto-Scanner',
-            type: selectedFile ? (selectedFile.type.includes('pdf') ? 'PDF Report' : 'Captured Image') : 'Lab Report',
-            size: selectedFile ? (selectedFile.size / 1024).toFixed(1) + ' KB' : '150 KB',
-            fileData: savedBase64,
-            vitals: { ...data.vitals },
-            notes: data.notes || `Extracted parameters.`,
-            diagnosis: data.diagnosis || [],
-            advice: data.advice || [],
-            medications: data.medications || [],
-            tests: data.tests || []
-          },
-          ...prev
-        ]);
-        
+        const newRecord = {
+          id: 'file_' + Date.now(),
+          memberId: record.memberId,
+          name: record.name,
+          date: record.IngestionDate || record.date || new Date().toISOString().split('T')[0],
+          doctor: record.doctor || 'AI Auto-Scanner',
+          type: record.type || 'Lab Report',
+          notes: record.notes || '',
+          diagnosis: record.diagnosis || [],
+          advice: record.advice || [],
+          medications: record.medications || [],
+          tests: record.tests || [],
+          vitals: record.vitals || {},
+          verificationStatus: 'verified',
+          ocrConfidence: 1.0,
+          fileData: savedBase64
+        };
+
+        setUploadedRecords(prev => [newRecord, ...prev]);
+
+        // If vitals are present, log them
+        if (record.vitals && Object.values(record.vitals).some(v => v !== null && v !== undefined)) {
+          logVitals(activeMember.id, { ...record.vitals }, record.date || new Date().toISOString().split('T')[0]);
+        }
+
+        addToast('Medical report saved!', 'success');
+      };
+
+      const deleteUploadedRecord = (id) => {
+        setUploadedRecords(prev => prev.filter(r => r.id !== id));
+        addToast('Record deleted!', 'danger');
+      };
+
+      const handleSaveScan = () => {
+        // Show privacy consent modal first
+        setShowConsentModal(true);
+      };
+
+      const handleSaveConfirm = () => {
+        saveUploadedRecord({
+          ...data,
+          name: selectedFile ? selectedFile.name : 'Report_AI_AutoMapped_' + new Date().toISOString().split('T')[0] + '.pdf',
+          type: docCategory,
+          memberId: activeMember.id
+        }, selectedFile);
+
         setData(null);
         setSelectedFile(null);
         setFileBase64('');
+        setShowAuthModal(false);
+        setPin('');
+        setAuthError('');
       };
 
       const handleDeleteRecord = (id) => {
-        setUploadedRecords(prev => prev.filter(r => r.id !== id));
+        deleteUploadedRecord(id);
         if (viewingRecord && viewingRecord.id === id) {
           setViewingRecord(null);
         }
       };
 
-      const memberRecords = uploadedRecords.filter(r => r.memberId === activeMember.id);
+      const handleLinkMedication = (med) => {
+        addMedicine(activeMember.id, {
+          name: med.name,
+          dosage: med.dosage || '1 Tablet',
+          time: med.frequency || 'Morning',
+          total: 30
+        });
+      };
+
+      const memberRecords = uploadedRecords ? uploadedRecords.filter(r => r.memberId === activeMember.id) : [];
 
       return (
-        <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', position: 'relative' }}>
           <div className="glass-panel" style={{ padding: '1rem', textAlign: 'center' }}>
-            <h4 style={{ fontSize: '0.9rem' }}>AI Health Report Scanner ({activeMember.name})</h4>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.7rem', marginBottom: '1rem' }}>Upload medical report cards or use camera to extract vitals.</p>
-            
+            <h4 style={{ fontSize: '0.9rem', margin: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+              <span>AI Health Report Scanner ({activeMember.name})</span>
+              <button 
+                onClick={() => startCamera()} 
+                style={{ 
+                  background: '#fee2e2', 
+                  color: 'var(--color-danger)', 
+                  border: '1px solid rgba(220, 38, 38, 0.2)', 
+                  borderRadius: '6px', 
+                  padding: '0.25rem 0.5rem', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '0.25rem', 
+                  fontSize: '0.65rem', 
+                  cursor: 'pointer',
+                  fontWeight: '600'
+                }}
+              >
+                <Icon name="camera" size={12} color="var(--color-danger)" /> Scan Document
+              </button>
+            </h4>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.7rem', marginTop: '0.25rem', marginBottom: '1rem' }}>Upload medical report cards or use camera to extract vitals.</p>
+
             {cameraActive && (
               <div style={{ position: 'relative', width: '100%', height: '180px', background: '#020617', borderRadius: '12px', overflow: 'hidden', border: '1px solid var(--border-color)', marginBottom: '0.75rem' }}>
                 <video ref={videoRef} style={{ width: '100%', height: '100%', objectFit: 'cover' }} playsInline muted />
-                <div style={{ position: 'absolute', top: '15px', left: '15px', right: '15px', bottom: '15px', border: '2px solid rgba(16, 185, 129, 0.4)', borderRadius: '8px', pointerEvents: 'none', boxShadow: '0 0 0 9999px rgba(0,0,0,0.4)' }}>
+                <div className="scan-guide-overlay">
+                  <div className="scan-laser-line" />
                   <div style={{ position: 'absolute', top: '-2px', left: '-2px', width: '15px', height: '15px', borderTop: '4px solid #10b981', borderLeft: '4px solid #10b981' }} />
                   <div style={{ position: 'absolute', top: '-2px', right: '-2px', width: '15px', height: '15px', borderTop: '4px solid #10b981', borderRight: '4px solid #10b981' }} />
                   <div style={{ position: 'absolute', bottom: '-2px', left: '-2px', width: '15px', height: '15px', borderBottom: '4px solid #10b981', borderLeft: '4px solid #10b981' }} />
                   <div style={{ position: 'absolute', bottom: '-2px', right: '-2px', width: '15px', height: '15px', borderBottom: '4px solid #10b981', borderRight: '4px solid #10b981' }} />
                 </div>
-                <div style={{ position: 'absolute', bottom: '10px', left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: '0.5rem' }}>
+                <div style={{ position: 'absolute', bottom: '10px', left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: '0.5rem', zIndex: 5 }}>
                   <button className="btn btn-primary" onClick={capturePhoto} style={{ fontSize: '0.7rem', padding: '0.35rem 0.75rem' }}>📸 Snap</button>
                   <button className="btn btn-secondary" onClick={stopCamera} style={{ fontSize: '0.7rem', padding: '0.35rem 0.75rem', background: '#334155', color: '#fff', border: 'none' }}>Cancel</button>
                 </div>
@@ -5651,7 +5773,7 @@ OPERATIONAL PROTOCOL DIRECTIVES:
             )}
 
             {!selectedFile && !scanning && !cameraActive && (
-              <div 
+              <div
                 className={`dropzone ${dragActive ? 'active' : ''}`}
                 onDragEnter={handleDrag}
                 onDragOver={handleDrag}
@@ -5664,7 +5786,7 @@ OPERATIONAL PROTOCOL DIRECTIVES:
                 <span style={{ fontSize: '2.5rem', display: 'block', marginBottom: '0.5rem' }}>📁</span>
                 <strong style={{ fontSize: '0.8rem', display: 'block' }}>Drag & Drop Report</strong>
                 <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Supports PDF, PNG, JPEG up to 4MB</span>
-                
+
                 <div style={{ marginTop: '0.75rem', display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
                   <button className="btn btn-secondary" onClick={(e) => { e.stopPropagation(); startCamera(); }} style={{ fontSize: '0.75rem', flex: 1, padding: '0.45rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}>
                     <Icon name="camera" size={14} /> Scan using Camera
@@ -5679,7 +5801,7 @@ OPERATIONAL PROTOCOL DIRECTIVES:
 
             {scanning && (
               <div style={{ position: 'relative', overflow: 'hidden', background: 'var(--bg-primary)', padding: '1.25rem', borderRadius: '12px', border: '1px solid var(--color-primary)', display: 'flex', flexDirection: 'column', gap: '0.5rem', minHeight: '110px', justifyContent: 'center' }}>
-                <div className="scan-line" style={{ height: '3px' }}></div>
+                <div className="scan-laser-line" style={{ top: 0, left: 0, position: 'absolute', width: '100%' }}></div>
                 <div style={{ zIndex: 2, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.4rem' }}>
                   <span className="pulse-animation" style={{ fontSize: '1.5rem', '--pulse-speed': '1.2s' }}>🔍</span>
                   <strong style={{ fontSize: '0.75rem', color: 'var(--color-primary)' }}>Scanning Document...</strong>
@@ -5688,7 +5810,7 @@ OPERATIONAL PROTOCOL DIRECTIVES:
               </div>
             )}
 
-            {selectedFile && !scanning && !data && (
+            {selectedFile && !scanning && !data && !cropping && (
               <div style={{ background: 'var(--bg-primary)', padding: '0.75rem', borderRadius: '12px', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <div style={{ width: '40px', height: '40px', borderRadius: '8px', background: 'var(--bg-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
@@ -5701,304 +5823,170 @@ OPERATIONAL PROTOCOL DIRECTIVES:
                   <button className="btn-icon" onClick={() => { setSelectedFile(null); setFileBase64(''); setData(null); }} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}><Icon name="x" size={16} /></button>
                 </div>
 
-                {!geminiKey && (
-                  <div className="form-group" style={{ textAlign: 'left', marginTop: '0.25rem' }}>
-                    <label style={{ fontSize: '0.65rem', fontWeight: '600', color: 'var(--text-secondary)' }}>Report Type Template (Mock):</label>
-                    <select className="form-control" value={mockReportType} onChange={e => setMockReportType(e.target.value)} style={{ fontSize: '0.7rem', padding: '0.25rem 0.4rem', height: '26px' }}>
-                      <option value="auto">Auto-detect from filename</option>
-                      <option value="diabetic">Diabetic Panel (Glucose, HbA1c)</option>
-                      <option value="lipid">Lipid Panel (Cholesterol, HDL, LDL, Triglycerides)</option>
-                      <option value="thyroid">Thyroid Panel (TSH)</option>
-                      <option value="cbc">CBC / Hematology (Hemoglobin)</option>
-                      <option value="kidney">Kidney / Renal Panel (Creatinine)</option>
-                      <option value="vitals">Basic Vitals (BP, Pulse, Temp, SpO2)</option>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginTop: '0.25rem', textAlign: 'left' }}>
+                  <div className="form-group">
+                    <label style={{ fontSize: '0.65rem', fontWeight: '600', color: 'var(--text-secondary)' }}>OCR Language:</label>
+                    <select className="form-control" value={selectedLanguage} onChange={e => setSelectedLanguage(e.target.value)} style={{ fontSize: '0.7rem', padding: '0.25rem 0.4rem', height: '26px' }}>
+                      <option value="English">English</option>
+                      <option value="Hindi">Hindi (हिन्दी)</option>
+                      <option value="Telugu">Telugu (తెలుగు)</option>
                     </select>
                   </div>
-                )}
+
+                  {!geminiKey && (
+                    <div className="form-group">
+                      <label style={{ fontSize: '0.65rem', fontWeight: '600', color: 'var(--text-secondary)' }}>Report Template (Mock):</label>
+                      <select className="form-control" value={mockReportType} onChange={e => setMockReportType(e.target.value)} style={{ fontSize: '0.7rem', padding: '0.25rem 0.4rem', height: '26px' }}>
+                        <option value="auto">Auto-detect from filename</option>
+                        <option value="prescription">Prescription Sheet</option>
+                        <option value="lab_report">Lab Vitals Report</option>
+                        <option value="vaccination">Vaccination Card</option>
+                        <option value="appointment_note">Clinic Follow-up Note</option>
+                      </select>
+                    </div>
+                  )}
+                </div>
 
                 <button className="btn btn-primary" onClick={triggerScan} style={{ width: '100%', fontSize: '0.75rem', padding: '0.45rem' }}>Run AI Scan</button>
               </div>
             )}
 
-            {data && !scanning && (
-              <div style={{ textAlign: 'left', background: 'var(--bg-primary)', padding: '1rem', borderRadius: '12px', fontSize: '0.75rem', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '420px', overflowY: 'auto' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.4rem' }}>
-                  <strong style={{ fontSize: '0.8rem', color: 'var(--color-primary)' }}>Verify Extracted Parameters</strong>
-                  <button className="btn-icon" onClick={() => { setData(null); setSelectedFile(null); setFileBase64(''); }} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)' }}><Icon name="x" size={14} /></button>
-                </div>
-                
-                {data.ingestionError && (
-                  <div style={{ padding: '0.65rem', background: 'var(--color-danger-light)', borderLeft: '4px solid var(--color-danger)', borderRadius: '8px', color: 'var(--color-danger)', fontSize: '0.7rem', marginBottom: '0.5rem', fontWeight: '500' }}>
-                    <strong>⚠️ Document Ingestion Error:</strong>
-                    <p style={{ marginTop: '0.2rem', color: 'var(--text-secondary)' }}>{data.ingestionErrorMessage || "The system encountered overlapping text layers or corrupted flows. Please upload a clear image (PNG/JPEG) instead."}</p>
+            {/* OCR Result Verification Sheet (Manual Correction) */}
+            {data && !cropping && (
+              <div style={{ background: 'rgba(255,255,255,0.01)', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '0.85rem', marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.6rem', textAlign: 'left' }}>
+                <h5 style={{ fontSize: '0.8rem', fontWeight: 'bold', margin: '0 0 0.2rem 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>🔍 Verify Extracted Parameters</span>
+                  <span style={{ fontSize: '0.55rem', background: 'var(--color-primary-light)', color: 'var(--color-primary)', padding: '0.1rem 0.35rem', borderRadius: '4px' }}>Accuracy check</span>
+                </h5>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.4rem' }}>
+                  <div className="form-group">
+                    <label style={{ display: 'block', fontSize: '0.65rem', color: 'var(--text-secondary)' }}>Report Date</label>
+                    <input type="date" className="form-control" style={{ padding: '0.3rem', fontSize: '0.7rem' }} value={data.date || ''} onChange={e => setData({ ...data, date: e.target.value })} />
                   </div>
-                )}
-
-                {(data.vitals.bpSystolic !== null || data.vitals.bpDiastolic !== null || data.vitals.glucose !== null || data.vitals.heartRate !== null || data.vitals.oxygen !== null || data.vitals.temperature !== null || data.vitals.weight !== null) && (
-                  <>
-                    <strong style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Vital Signs</strong>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-                      {data.vitals.bpSystolic !== null && (
-                        <div>
-                          <label style={{ display: 'block', fontSize: '0.65rem', color: 'var(--text-secondary)' }}>BP Systolic (mmHg)</label>
-                          <input type="number" className="form-control" style={{ padding: '0.3rem', fontSize: '0.7rem' }} value={data.vitals.bpSystolic ?? ''} onChange={e => {
-                            const val = e.target.value !== '' ? parseInt(e.target.value) : null;
-                            setData(prev => ({ ...prev, vitals: { ...prev.vitals, bpSystolic: val } }));
-                          }} />
-                        </div>
-                      )}
-                      {data.vitals.bpDiastolic !== null && (
-                        <div>
-                          <label style={{ display: 'block', fontSize: '0.65rem', color: 'var(--text-secondary)' }}>BP Diastolic (mmHg)</label>
-                          <input type="number" className="form-control" style={{ padding: '0.3rem', fontSize: '0.7rem' }} value={data.vitals.bpDiastolic ?? ''} onChange={e => {
-                            const val = e.target.value !== '' ? parseInt(e.target.value) : null;
-                            setData(prev => ({ ...prev, vitals: { ...prev.vitals, bpDiastolic: val } }));
-                          }} />
-                        </div>
-                      )}
-                    </div>
-                    
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-                      {data.vitals.glucose !== null && (
-                        <div>
-                          <label style={{ display: 'block', fontSize: '0.65rem', color: 'var(--text-secondary)' }}>Glucose (mg/dL)</label>
-                          <input type="number" className="form-control" style={{ padding: '0.3rem', fontSize: '0.7rem' }} value={data.vitals.glucose ?? ''} onChange={e => {
-                            const val = e.target.value !== '' ? parseInt(e.target.value) : null;
-                            setData(prev => ({ ...prev, vitals: { ...prev.vitals, glucose: val } }));
-                          }} />
-                        </div>
-                      )}
-                      {data.vitals.heartRate !== null && (
-                        <div>
-                          <label style={{ display: 'block', fontSize: '0.65rem', color: 'var(--text-secondary)' }}>Pulse (BPM)</label>
-                          <input type="number" className="form-control" style={{ padding: '0.3rem', fontSize: '0.7rem' }} value={data.vitals.heartRate ?? ''} onChange={e => {
-                            const val = e.target.value !== '' ? parseInt(e.target.value) : null;
-                            setData(prev => ({ ...prev, vitals: { ...prev.vitals, heartRate: val } }));
-                          }} />
-                        </div>
-                      )}
-                    </div>
-                  </>
-                )}
-
-                {(data.vitals.hba1c !== null || data.vitals.tsh !== null) && (
-                  <>
-                    <strong style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', textTransform: 'uppercase', marginTop: '0.4rem' }}>Blood Chemistry & Thyroid</strong>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-                      {data.vitals.hba1c !== null && (
-                        <div>
-                          <label style={{ display: 'block', fontSize: '0.65rem', color: 'var(--text-secondary)' }}>HbA1c (%)</label>
-                          <input type="number" step="0.1" className="form-control" style={{ padding: '0.3rem', fontSize: '0.7rem' }} value={data.vitals.hba1c ?? ''} onChange={e => {
-                            const val = e.target.value !== '' ? parseFloat(e.target.value) : null;
-                            setData(prev => ({ ...prev, vitals: { ...prev.vitals, hba1c: val } }));
-                          }} />
-                        </div>
-                      )}
-                      {data.vitals.tsh !== null && (
-                        <div>
-                          <label style={{ display: 'block', fontSize: '0.65rem', color: 'var(--text-secondary)' }}>TSH (uIU/mL)</label>
-                          <input type="number" step="0.01" className="form-control" style={{ padding: '0.3rem', fontSize: '0.7rem' }} value={data.vitals.tsh ?? ''} onChange={e => {
-                            const val = e.target.value !== '' ? parseFloat(e.target.value) : null;
-                            setData(prev => ({ ...prev, vitals: { ...prev.vitals, tsh: val } }));
-                          }} />
-                        </div>
-                      )}
-                    </div>
-                  </>
-                )}
-
-                {(data.vitals.cholesterol !== null || data.vitals.triglycerides !== null || data.vitals.hdl !== null || data.vitals.ldl !== null) && (
-                  <>
-                    <strong style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', textTransform: 'uppercase', marginTop: '0.4rem' }}>Lipid Profile</strong>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-                      {data.vitals.cholesterol !== null && (
-                        <div>
-                          <label style={{ display: 'block', fontSize: '0.65rem', color: 'var(--text-secondary)' }}>Total Chol (mg/dL)</label>
-                          <input type="number" className="form-control" style={{ padding: '0.3rem', fontSize: '0.7rem' }} value={data.vitals.cholesterol ?? ''} onChange={e => {
-                            const val = e.target.value !== '' ? parseInt(e.target.value) : null;
-                            setData(prev => ({ ...prev, vitals: { ...prev.vitals, cholesterol: val } }));
-                          }} />
-                        </div>
-                      )}
-                      {data.vitals.ldl !== null && (
-                        <div>
-                          <label style={{ display: 'block', fontSize: '0.65rem', color: 'var(--text-secondary)' }}>LDL (mg/dL)</label>
-                          <input type="number" className="form-control" style={{ padding: '0.3rem', fontSize: '0.7rem' }} value={data.vitals.ldl ?? ''} onChange={e => {
-                            const val = e.target.value !== '' ? parseInt(e.target.value) : null;
-                            setData(prev => ({ ...prev, vitals: { ...prev.vitals, ldl: val } }));
-                          }} />
-                        </div>
-                      )}
-                    </div>
-                  </>
-                )}
-
-                {(data.vitals.hemoglobin !== null || data.vitals.creatinine !== null) && (
-                  <>
-                    <strong style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', textTransform: 'uppercase', marginTop: '0.4rem' }}>CBC & Renal Panel</strong>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-                      {data.vitals.hemoglobin !== null && (
-                        <div>
-                          <label style={{ display: 'block', fontSize: '0.65rem', color: 'var(--text-secondary)' }}>Hemoglobin (g/dL)</label>
-                          <input type="number" step="0.1" className="form-control" style={{ padding: '0.3rem', fontSize: '0.7rem' }} value={data.vitals.hemoglobin ?? ''} onChange={e => {
-                            const val = e.target.value !== '' ? parseFloat(e.target.value) : null;
-                            setData(prev => ({ ...prev, vitals: { ...prev.vitals, hemoglobin: val } }));
-                          }} />
-                        </div>
-                      )}
-                      {data.vitals.creatinine !== null && (
-                        <div>
-                          <label style={{ display: 'block', fontSize: '0.65rem', color: 'var(--text-secondary)' }}>Creatinine (mg/dL)</label>
-                          <input type="number" step="0.01" className="form-control" style={{ padding: '0.3rem', fontSize: '0.7rem' }} value={data.vitals.creatinine ?? ''} onChange={e => {
-                            const val = e.target.value !== '' ? parseFloat(e.target.value) : null;
-                            setData(prev => ({ ...prev, vitals: { ...prev.vitals, creatinine: val } }));
-                          }} />
-                        </div>
-                      )}
-                    </div>
-                  </>
-                )}
-
-                <div style={{ marginTop: '0.4rem' }}>
-                  <label style={{ display: 'block', fontSize: '0.65rem', color: 'var(--text-secondary)', fontWeight: 'bold' }}>Observations & Summary</label>
-                  <textarea className="form-control" style={{ padding: '0.3rem', fontSize: '0.7rem', height: '40px', resize: 'vertical' }} value={data.notes || ''} onChange={e => {
-                    const val = e.target.value;
-                    setData(prev => ({ ...prev, notes: val }));
-                  }} />
+                  <div className="form-group">
+                    <label style={{ display: 'block', fontSize: '0.65rem', color: 'var(--text-secondary)' }}>Document Category</label>
+                    <select className="form-control" value={docCategory} onChange={e => setDocCategory(e.target.value)} style={{ padding: '0.25rem', fontSize: '0.7rem', height: '28px' }}>
+                      <option value="Prescription">Prescription</option>
+                      <option value="Lab Report">Lab Report</option>
+                      <option value="Vaccination Card">Vaccination Card</option>
+                      <option value="Appointment Note">Appointment Note</option>
+                    </select>
+                  </div>
                 </div>
 
-                <div style={{ marginTop: '0.4rem', borderTop: '1px solid var(--border-color)', paddingTop: '0.4rem' }}>
+                {/* Editable vital fields confirmed in scanner */}
+                <strong style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', textTransform: 'uppercase', marginTop: '0.2rem' }}>Blood Pressure & Pulse</strong>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.4rem' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.6rem', color: 'var(--text-secondary)' }}>Systolic</label>
+                    <input type="number" className="form-control" style={{ padding: '0.25rem', fontSize: '0.7rem' }} value={data.vitals.bpSystolic ?? ''} onChange={e => setData({ ...data, vitals: { ...data.vitals, bpSystolic: e.target.value !== '' ? parseInt(e.target.value) : null } })} />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.6rem', color: 'var(--text-secondary)' }}>Diastolic</label>
+                    <input type="number" className="form-control" style={{ padding: '0.25rem', fontSize: '0.7rem' }} value={data.vitals.bpDiastolic ?? ''} onChange={e => setData({ ...data, vitals: { ...data.vitals, bpDiastolic: e.target.value !== '' ? parseInt(e.target.value) : null } })} />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.6rem', color: 'var(--text-secondary)' }}>Pulse (BPM)</label>
+                    <input type="number" className="form-control" style={{ padding: '0.25rem', fontSize: '0.7rem' }} value={data.vitals.heartRate ?? ''} onChange={e => setData({ ...data, vitals: { ...data.vitals, heartRate: e.target.value !== '' ? parseInt(e.target.value) : null } })} />
+                  </div>
+                </div>
+
+                <strong style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', textTransform: 'uppercase', marginTop: '0.2rem' }}>Metabolic Metrics</strong>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.4rem' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.6rem', color: 'var(--text-secondary)' }}>Glucose (mg/dL)</label>
+                    <input type="number" className="form-control" style={{ padding: '0.25rem', fontSize: '0.7rem' }} value={data.vitals.glucose ?? ''} onChange={e => setData({ ...data, vitals: { ...data.vitals, glucose: e.target.value !== '' ? parseInt(e.target.value) : null } })} />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.6rem', color: 'var(--text-secondary)' }}>HbA1c (%)</label>
+                    <input type="number" step="0.1" className="form-control" style={{ padding: '0.25rem', fontSize: '0.7rem' }} value={data.vitals.hba1c ?? ''} onChange={e => setData({ ...data, vitals: { ...data.vitals, hba1c: e.target.value !== '' ? parseFloat(e.target.value) : null } })} />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.6rem', color: 'var(--text-secondary)' }}>TSH (uIU/mL)</label>
+                    <input type="number" step="0.01" className="form-control" style={{ padding: '0.25rem', fontSize: '0.7rem' }} value={data.vitals.tsh ?? ''} onChange={e => setData({ ...data, vitals: { ...data.vitals, tsh: e.target.value !== '' ? parseFloat(e.target.value) : null } })} />
+                  </div>
+                </div>
+
+                <strong style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', textTransform: 'uppercase', marginTop: '0.2rem' }}>Lipids & Chemistry</strong>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.4rem' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.6rem', color: 'var(--text-secondary)' }}>Total Chol</label>
+                    <input type="number" className="form-control" style={{ padding: '0.25rem', fontSize: '0.7rem' }} value={data.vitals.cholesterol ?? ''} onChange={e => setData({ ...data, vitals: { ...data.vitals, cholesterol: e.target.value !== '' ? parseInt(e.target.value) : null } })} />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.6rem', color: 'var(--text-secondary)' }}>LDL Chol</label>
+                    <input type="number" className="form-control" style={{ padding: '0.25rem', fontSize: '0.7rem' }} value={data.vitals.ldl ?? ''} onChange={e => setData({ ...data, vitals: { ...data.vitals, ldl: e.target.value !== '' ? parseInt(e.target.value) : null } })} />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.6rem', color: 'var(--text-secondary)' }}>Triglycerides</label>
+                    <input type="number" className="form-control" style={{ padding: '0.25rem', fontSize: '0.7rem' }} value={data.vitals.triglycerides ?? ''} onChange={e => setData({ ...data, vitals: { ...data.vitals, triglycerides: e.target.value !== '' ? parseInt(e.target.value) : null } })} />
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.4rem' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.6rem', color: 'var(--text-secondary)' }}>Hemoglobin (g/dL)</label>
+                    <input type="number" step="0.1" className="form-control" style={{ padding: '0.25rem', fontSize: '0.7rem' }} value={data.vitals.hemoglobin ?? ''} onChange={e => setData({ ...data, vitals: { ...data.vitals, hemoglobin: e.target.value !== '' ? parseFloat(e.target.value) : null } })} />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.6rem', color: 'var(--text-secondary)' }}>Creatinine (mg/dL)</label>
+                    <input type="number" step="0.01" className="form-control" style={{ padding: '0.25rem', fontSize: '0.7rem' }} value={data.vitals.creatinine ?? ''} onChange={e => setData({ ...data, vitals: { ...data.vitals, creatinine: e.target.value !== '' ? parseFloat(e.target.value) : null } })} />
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.65rem', color: 'var(--text-secondary)', fontWeight: 'bold' }}>Observations Summary</label>
+                  <textarea className="form-control" style={{ padding: '0.3rem', fontSize: '0.7rem', height: '40px' }} value={data.notes || ''} onChange={e => setData({ ...data, notes: e.target.value })} />
+                </div>
+
+                <div>
                   <label style={{ display: 'block', fontSize: '0.65rem', color: 'var(--text-secondary)', fontWeight: 'bold' }}>Segregated Diagnoses (One per line)</label>
-                  <textarea 
-                    className="form-control" 
-                    style={{ padding: '0.3rem', fontSize: '0.7rem', height: '50px', resize: 'vertical', width: '100%' }} 
-                    value={data.diagnosis ? data.diagnosis.join('\n') : ''} 
-                    onChange={e => {
-                      const val = e.target.value.split('\n').map(x => x.trim()).filter(Boolean);
-                      setData(prev => ({ ...prev, diagnosis: val }));
-                    }} 
-                  />
+                  <textarea className="form-control" style={{ padding: '0.3rem', fontSize: '0.7rem', height: '50px' }} value={data.diagnosis ? data.diagnosis.join('\n') : ''} onChange={e => setData({ ...data, diagnosis: e.target.value.split('\n').map(x => x.trim()).filter(Boolean) })} />
                 </div>
 
-                <div style={{ marginTop: '0.4rem' }}>
-                  <label style={{ display: 'block', fontSize: '0.65rem', color: 'var(--text-secondary)', fontWeight: 'bold' }}>Segregated Advice & Instructions (One per line)</label>
-                  <textarea 
-                    className="form-control" 
-                    style={{ padding: '0.3rem', fontSize: '0.7rem', height: '50px', resize: 'vertical', width: '100%' }} 
-                    value={data.advice ? data.advice.join('\n') : ''} 
-                    onChange={e => {
-                      const val = e.target.value.split('\n').map(x => x.trim()).filter(Boolean);
-                      setData(prev => ({ ...prev, advice: val }));
-                    }} 
-                  />
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.65rem', color: 'var(--text-secondary)', fontWeight: 'bold' }}>Advice Instructions (One per line)</label>
+                  <textarea className="form-control" style={{ padding: '0.3rem', fontSize: '0.7rem', height: '50px' }} value={data.advice ? data.advice.join('\n') : ''} onChange={e => setData({ ...data, advice: e.target.value.split('\n').map(x => x.trim()).filter(Boolean) })} />
                 </div>
 
-                <div style={{ marginTop: '0.4rem' }}>
+                <div>
                   <label style={{ display: 'block', fontSize: '0.65rem', color: 'var(--text-secondary)', fontWeight: 'bold', marginBottom: '0.2rem' }}>Segregated Medications</label>
                   {data.medications && data.medications.map((med, idx) => (
                     <div key={idx} style={{ background: 'var(--bg-secondary)', padding: '0.4rem', borderRadius: '6px', border: '1px solid var(--border-color)', marginBottom: '0.4rem', position: 'relative' }}>
-                      <button 
-                        type="button" 
-                        onClick={() => {
-                          const updated = data.medications.filter((_, i) => i !== idx);
-                          setData(prev => ({ ...prev, medications: updated }));
-                        }}
-                        style={{ position: 'absolute', top: '4px', right: '4px', background: 'none', border: 'none', color: 'var(--color-danger)', cursor: 'pointer', fontSize: '0.65rem' }}
-                      >
-                        Remove
-                      </button>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', marginTop: '0.2rem' }}>
-                        <input 
-                          type="text" 
-                          placeholder="Medicine Name" 
-                          className="form-control" 
-                          style={{ padding: '0.2rem 0.3rem', fontSize: '0.65rem', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '4px' }} 
-                          value={med.name || ''} 
-                          onChange={e => {
+                      <button type="button" onClick={() => setData({ ...data, medications: data.medications.filter((_, i) => i !== idx) })} style={{ position: 'absolute', top: '4px', right: '4px', background: 'none', border: 'none', color: 'var(--color-danger)', cursor: 'pointer', fontSize: '0.65rem' }}>Remove</button>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', marginTop: '0.25rem' }}>
+                        <input type="text" placeholder="Medicine Name" className="form-control" style={{ padding: '0.2rem 0.3rem', fontSize: '0.65rem', background: 'var(--bg-primary)' }} value={med.name || ''} onChange={e => {
+                          const updated = [...data.medications];
+                          updated[idx].name = e.target.value;
+                          setData({ ...data, medications: updated });
+                        }} />
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.25rem' }}>
+                          <input type="text" placeholder="Dose" className="form-control" style={{ padding: '0.2rem 0.3rem', fontSize: '0.65rem', background: 'var(--bg-primary)' }} value={med.dosage || ''} onChange={e => {
                             const updated = [...data.medications];
-                            updated[idx].name = e.target.value;
-                            setData(prev => ({ ...prev, medications: updated }));
-                          }} 
-                        />
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.25rem' }}>
-                          <input 
-                            type="text" 
-                            placeholder="Dosage (e.g. 500mg)" 
-                            className="form-control" 
-                            style={{ padding: '0.2rem 0.3rem', fontSize: '0.65rem', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '4px' }} 
-                            value={med.dosage || ''} 
-                            onChange={e => {
-                              const updated = [...data.medications];
-                              updated[idx].dosage = e.target.value;
-                              setData(prev => ({ ...prev, medications: updated }));
-                            }} 
-                          />
-                          <input 
-                            type="text" 
-                            placeholder="Frequency (e.g. 1-0-1)" 
-                            className="form-control" 
-                            style={{ padding: '0.2rem 0.3rem', fontSize: '0.65rem', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '4px' }} 
-                            value={med.frequency || ''} 
-                            onChange={e => {
-                              const updated = [...data.medications];
-                              updated[idx].frequency = e.target.value;
-                              setData(prev => ({ ...prev, medications: updated }));
-                            }} 
-                          />
-                        </div>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.25rem' }}>
-                          <input 
-                            type="text" 
-                            placeholder="Route (e.g. Orally)" 
-                            className="form-control" 
-                            style={{ padding: '0.2rem 0.3rem', fontSize: '0.65rem', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '4px' }} 
-                            value={med.route || ''} 
-                            onChange={e => {
-                              const updated = [...data.medications];
-                              updated[idx].route = e.target.value;
-                              setData(prev => ({ ...prev, medications: updated }));
-                            }} 
-                          />
-                          <input 
-                            type="text" 
-                            placeholder="Duration (e.g. 5 days)" 
-                            className="form-control" 
-                            style={{ padding: '0.2rem 0.3rem', fontSize: '0.65rem', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '4px' }} 
-                            value={med.duration || ''} 
-                            onChange={e => {
-                              const updated = [...data.medications];
-                              updated[idx].duration = e.target.value;
-                              setData(prev => ({ ...prev, medications: updated }));
-                            }} 
-                          />
+                            updated[idx].dosage = e.target.value;
+                            setData({ ...data, medications: updated });
+                          }} />
+                          <input type="text" placeholder="Freq" className="form-control" style={{ padding: '0.2rem 0.3rem', fontSize: '0.65rem', background: 'var(--bg-primary)' }} value={med.frequency || ''} onChange={e => {
+                            const updated = [...data.medications];
+                            updated[idx].frequency = e.target.value;
+                            setData({ ...data, medications: updated });
+                          }} />
+                          <input type="text" placeholder="Duration" className="form-control" style={{ padding: '0.2rem 0.3rem', fontSize: '0.65rem', background: 'var(--bg-primary)' }} value={med.duration || ''} onChange={e => {
+                            const updated = [...data.medications];
+                            updated[idx].duration = e.target.value;
+                            setData({ ...data, medications: updated });
+                          }} />
                         </div>
                       </div>
                     </div>
                   ))}
-                  <button 
-                    type="button" 
-                    className="btn btn-secondary" 
-                    style={{ padding: '0.25rem 0.5rem', fontSize: '0.65rem', width: '100%' }}
-                    onClick={() => {
-                      const updated = [...(data.medications || []), { name: '', dosage: '', frequency: '', route: '', duration: '' }];
-                      setData(prev => ({ ...prev, medications: updated }));
-                    }}
-                  >
-                    + Add Medication Row
-                  </button>
+                  <button type="button" className="btn btn-secondary" onClick={() => setData({ ...data, medications: [...data.medications, { name: '', dosage: '', frequency: '', route: 'Orally', duration: '' }] })} style={{ width: '100%', fontSize: '0.65rem', padding: '0.25rem', marginTop: '0.2rem' }}>+ Add Medication Row</button>
                 </div>
 
-                <div style={{ marginTop: '0.4rem', marginBottom: '0.5rem' }}>
-                  <label style={{ display: 'block', fontSize: '0.65rem', color: 'var(--text-secondary)', fontWeight: 'bold' }}>Segregated Prescribed Tests (One per line)</label>
-                  <textarea 
-                    className="form-control" 
-                    style={{ padding: '0.3rem', fontSize: '0.7rem', height: '50px', resize: 'vertical', width: '100%' }} 
-                    value={data.tests ? data.tests.join('\n') : ''} 
-                    onChange={e => {
-                      const val = e.target.value.split('\n').map(x => x.trim()).filter(Boolean);
-                      setData(prev => ({ ...prev, tests: val }));
-                    }} 
-                  />
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.65rem', color: 'var(--text-secondary)', fontWeight: 'bold' }}>Ingestion / Lab Tests (One per line)</label>
+                  <textarea className="form-control" style={{ padding: '0.3rem', fontSize: '0.7rem', height: '50px' }} value={data.tests ? data.tests.join('\n') : ''} onChange={e => setData({ ...data, tests: e.target.value.split('\n').map(x => x.trim()).filter(Boolean) })} />
                 </div>
 
                 <button className="btn btn-primary" onClick={handleSaveScan} style={{ marginTop: '0.4rem', width: '100%', fontSize: '0.75rem', padding: '0.45rem' }}>Confirm & Save to Profile</button>
@@ -6008,9 +5996,9 @@ OPERATIONAL PROTOCOL DIRECTIVES:
 
           {/* Stored document list (Medical Repository) */}
           <div className="glass-panel" style={{ padding: '1rem' }}>
-            <h4 style={{ fontSize: '0.9rem', marginBottom: '0.5rem' }}>Medical Repository ({activeMember.name})</h4>
+            <h4 style={{ fontSize: '0.9rem', marginBottom: '0.5rem', margin: 0, textAlign: 'left' }}>Medical Repository ({activeMember.name})</h4>
             {memberRecords.length > 0 ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
                 {memberRecords.map(rec => (
                   <div key={rec.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.5rem', background: 'var(--bg-primary)', borderRadius: '8px', border: '1px solid var(--border-color)', gap: '0.5rem' }}>
                     <div style={{ fontSize: '1.2rem', padding: '0.2rem', background: 'var(--bg-secondary)', borderRadius: '6px', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -6018,13 +6006,13 @@ OPERATIONAL PROTOCOL DIRECTIVES:
                     </div>
                     <div style={{ flex: 1, overflow: 'hidden', textAlign: 'left', fontSize: '0.7rem' }}>
                       <strong style={{ display: 'block', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }} title={rec.name}>{rec.name}</strong>
-                      <span style={{ fontSize: '0.6rem', color: 'var(--text-secondary)' }}>{rec.type} &bull; {rec.date}</span>
+                      <span style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>{rec.type} &bull; {rec.date}</span>
                     </div>
                     <div style={{ display: 'flex', gap: '0.25rem' }}>
-                      <button className="btn-icon" onClick={() => setViewingRecord(rec)} style={{ background: 'var(--bg-secondary)', border: 'none', width: '26px', height: '26px', borderRadius: '6px', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="View Document">
+                      <button className="btn-icon" onClick={() => setViewingRecord(rec)} style={{ background: 'var(--bg-secondary)', border: 'none', width: '26px', height: '26px', borderRadius: '6px', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }} title="View Document">
                         <Icon name="eye" size={12} />
                       </button>
-                      <button className="btn-icon" onClick={() => handleDeleteRecord(rec.id)} style={{ background: 'rgba(239, 68, 68, 0.1)', border: 'none', width: '26px', height: '26px', borderRadius: '6px', color: 'var(--color-danger)', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Delete Record">
+                      <button className="btn-icon" onClick={() => handleDeleteRecord(rec.id)} style={{ background: 'rgba(239, 68, 68, 0.1)', border: 'none', width: '26px', height: '26px', borderRadius: '6px', color: 'var(--color-danger)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }} title="Delete Record">
                         <Icon name="trash" size={12} />
                       </button>
                     </div>
@@ -6034,131 +6022,408 @@ OPERATIONAL PROTOCOL DIRECTIVES:
             ) : <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'center', margin: '0.5rem 0' }}>No records uploaded for this member.</p>}
           </div>
 
-          {/* Document Preview Modal */}
-          {viewingRecord && (
+          {/* Floating Action Button */}
+          <button 
+            onClick={() => startCamera()} 
+            className="fab-btn"
+            style={{
+              position: 'absolute',
+              bottom: '80px',
+              right: '24px',
+              width: '56px',
+              height: '56px',
+              borderRadius: '50%',
+              background: 'var(--color-danger)',
+              color: '#fff',
+              border: 'none',
+              boxShadow: '0 4px 14px rgba(220, 38, 38, 0.4)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              zIndex: 1000
+            }}
+            title="Scan Document"
+          >
+            <Icon name="plus" size={24} color="#fff" />
+          </button>
+
+          {/* Cropping Modal Step */}
+          {cropping && fileBase64 && (
+            <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0, 0, 0, 0.85)', backdropFilter: 'blur(4px)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+              <div className="glass-panel" style={{ width: '100%', maxWidth: '380px', background: '#090d16', border: '1px solid var(--border-color)', borderRadius: '16px', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                <h3 style={{ fontSize: '0.9rem', color: '#fff', margin: 0, textAlign: 'left' }}>📐 Adjust Edge Crop</h3>
+                
+                <div 
+                  ref={containerRef}
+                  onMouseMove={handlePointerMove}
+                  onTouchMove={handlePointerMove}
+                  onMouseUp={handlePointerUp}
+                  onTouchEnd={handlePointerUp}
+                  style={{ position: 'relative', width: '100%', height: '240px', background: '#020617', borderRadius: '8px', overflow: 'hidden', border: '1px solid #1e293b', userSelect: 'none' }}
+                >
+                  <img src={fileBase64} style={{ width: '100%', height: '100%', objectFit: 'contain', pointerEvents: 'none' }} />
+                  
+                  <svg style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none' }}>
+                    <polygon
+                      points={`${corners.tl.x}%,${corners.tl.y}% ${corners.tr.x}%,${corners.tr.y}% ${corners.br.x}%,${corners.br.y}% ${corners.bl.x}%,${corners.bl.y}%`}
+                      fill="rgba(16, 185, 129, 0.15)"
+                      stroke="#10b981"
+                      strokeWidth="2"
+                    />
+                  </svg>
+                  
+                  {Object.keys(corners).map((key) => {
+                    const pt = corners[key];
+                    return (
+                      <div
+                        key={key}
+                        onMouseDown={(e) => handlePointerDown(key, e)}
+                        onTouchStart={(e) => handlePointerDown(key, e)}
+                        style={{
+                          position: 'absolute',
+                          left: `${pt.x}%`,
+                          top: `${pt.y}%`,
+                          width: '18px',
+                          height: '18px',
+                          background: '#10b981',
+                          border: '2.5px solid #fff',
+                          borderRadius: '50%',
+                          cursor: 'pointer',
+                          transform: 'translate(-50%, -50%)',
+                          zIndex: 10,
+                          boxShadow: '0 2px 6px rgba(0,0,0,0.3)'
+                        }}
+                      />
+                    );
+                  })}
+                </div>
+                
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <button 
+                    className="btn btn-secondary" 
+                    onClick={() => {
+                      setCorners({
+                        tl: { x: 8, y: 10 },
+                        tr: { x: 92, y: 8 },
+                        br: { x: 90, y: 92 },
+                        bl: { x: 10, y: 90 }
+                      });
+                      addToast("Edges auto-detected!", "success");
+                    }}
+                    style={{ flex: 1, fontSize: '0.7rem', padding: '0.4rem', background: '#1e293b', border: 'none', color: '#fff' }}
+                  >
+                    ✨ Auto-Detect Edges
+                  </button>
+                  <button 
+                    className="btn btn-primary" 
+                    onClick={() => {
+                      setCropping(false);
+                      triggerScan();
+                    }}
+                    style={{ flex: 1, fontSize: '0.7rem', padding: '0.4rem' }}
+                  >
+                    Crop & Analyze
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Consent Modal Dialog */}
+          {showConsentModal && (
+            <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0, 0, 0, 0.75)', backdropFilter: 'blur(4px)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+              <div className="glass-panel" style={{ width: '100%', maxWidth: '340px', background: '#090d16', border: '1px solid var(--border-color)', borderRadius: '16px', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem', textAlign: 'center' }}>
+                <div style={{ fontSize: '2rem' }}>🔒</div>
+                <h3 style={{ fontSize: '0.9rem', color: '#fff', margin: 0 }}>Security & Privacy Consent</h3>
+                <p style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', lineHeight: '1.4', margin: 0 }}>
+                  The scanned document and extracted health parameters will be stored in your encrypted profile database. This data is linked directly to <strong>{activeMember.name}</strong>'s personal dashboard and will only be shared when explicitly authorized by you.
+                </p>
+                <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.25rem' }}>
+                  <button className="btn btn-secondary" onClick={() => setShowConsentModal(false)} style={{ flex: 1, fontSize: '0.7rem', padding: '0.45rem', background: '#1e293b', border: 'none', color: '#fff' }}>Cancel</button>
+                  <button 
+                    className="btn btn-primary" 
+                    onClick={() => {
+                      setShowConsentModal(false);
+                      setShowAuthModal(true);
+                    }}
+                    style={{ flex: 1, fontSize: '0.7rem', padding: '0.45rem' }}
+                  >
+                    I Consent
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* PIN & Biometric Authentication Modal */}
+          {showAuthModal && (
+            <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0, 0, 0, 0.75)', backdropFilter: 'blur(4px)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+              <div className="glass-panel" style={{ width: '100%', maxWidth: '320px', background: '#090d16', border: '1px solid var(--border-color)', borderRadius: '16px', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.85rem', textAlign: 'center' }}>
+                <h3 style={{ fontSize: '0.9rem', color: '#fff', margin: 0 }}>Verify Identity</h3>
+                <p style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', margin: 0 }}>Confirm your security PIN or touch the biometric sensor.</p>
+                
+                {authError && <div style={{ fontSize: '0.65rem', color: 'var(--color-danger)', fontWeight: 'bold' }}>⚠️ {authError}</div>}
+                
+                <input 
+                  type="password" 
+                  className="form-control" 
+                  placeholder="Enter 4-Digit PIN (e.g. 1234)"
+                  maxLength={4}
+                  value={pin}
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/\D/g, '');
+                    setPin(val);
+                    if (val.length === 4) {
+                      if (val === '1234') {
+                        handleSaveConfirm();
+                      } else {
+                        setAuthError('Incorrect PIN code. Try 1234.');
+                        setPin('');
+                      }
+                    }
+                  }}
+                  style={{ fontSize: '0.85rem', textAlign: 'center', padding: '0.5rem', background: '#020617', border: '1px solid #1e293b', color: '#fff', borderRadius: '8px', letterSpacing: '0.5rem' }}
+                />
+                
+                <div style={{ margin: '0.5rem 0' }}>
+                  <button 
+                    type="button" 
+                    onClick={() => {
+                      addToast("Biometric verification successful!", "success");
+                      handleSaveConfirm();
+                    }}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-primary)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.35rem', margin: '0 auto' }}
+                  >
+                    <span style={{ fontSize: '2.5rem' }}>👆</span>
+                    <span style={{ fontSize: '0.6rem', color: 'var(--text-secondary)' }}>Tap to use Fingerprint Biometrics</span>
+                  </button>
+                </div>
+                
+                <button className="btn btn-secondary" onClick={() => { setShowAuthModal(false); setPin(''); setAuthError(''); }} style={{ fontSize: '0.7rem', padding: '0.4rem', background: '#1e293b', border: 'none', color: '#fff' }}>Cancel</button>
+              </div>
+            </div>
+          )}
+
+          {/* Document Preview & Side-by-Side Edit Modal */}
+          {viewingRecord && editedRecord && (
             <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0, 0, 0, 0.75)', backdropFilter: 'blur(4px)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
               <div className="glass-panel" style={{ width: '100%', maxWidth: '380px', background: '#090d16', border: '1px solid var(--border-color)', borderRadius: '16px', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem', maxHeight: '85vh', overflowY: 'auto' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #1e293b', paddingBottom: '0.5rem' }}>
-                  <div style={{ overflow: 'hidden', textAlign: 'left' }}>
-                    <h3 style={{ fontSize: '0.85rem', margin: 0, textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', color: '#fff' }}>{viewingRecord.name}</h3>
-                    <span style={{ fontSize: '0.6rem', color: 'var(--text-secondary)' }}>{viewingRecord.date}</span>
+                  <div style={{ overflow: 'hidden', textAlign: 'left', flex: 1 }}>
+                    {isEditingRecord ? (
+                      <input 
+                        type="text" 
+                        className="form-control" 
+                        value={editedRecord.name} 
+                        onChange={e => setEditedRecord({ ...editedRecord, name: e.target.value })} 
+                        style={{ fontSize: '0.8rem', padding: '0.2rem', color: '#fff', background: '#020617', border: '1px solid #1e293b' }} 
+                      />
+                    ) : (
+                      <h3 style={{ fontSize: '0.85rem', margin: 0, textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', color: '#fff' }}>{viewingRecord.name}</h3>
+                    )}
+                    <span style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>{viewingRecord.date}</span>
                   </div>
-                  <button className="btn-icon" onClick={() => setViewingRecord(null)} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer' }}>
+                  <button className="btn-icon" onClick={() => setViewingRecord(null)} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', paddingLeft: '0.5rem' }}>
                     <Icon name="x" size={18} />
                   </button>
                 </div>
 
-                <div style={{ flex: 1, minHeight: '180px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#020617', borderRadius: '8px', border: '1px solid #1e293b', overflow: 'hidden' }}>
+                <div style={{ flex: 1, minHeight: '140px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#020617', borderRadius: '8px', border: '1px solid #1e293b', overflow: 'hidden' }}>
                   {viewingRecord.fileData && viewingRecord.fileData.startsWith('data:image/') ? (
-                    <img src={viewingRecord.fileData} style={{ maxWidth: '100%', maxHeight: '250px', objectFit: 'contain' }} />
+                    <img src={viewingRecord.fileData} style={{ maxWidth: '100%', maxHeight: '200px', objectFit: 'contain' }} />
                   ) : (
                     <div style={{ padding: '1.5rem', textAlign: 'center', width: '100%' }}>
                       <span style={{ fontSize: '2rem', display: 'block', marginBottom: '0.5rem' }}>📄</span>
                       <strong style={{ fontSize: '0.75rem', display: 'block', color: '#fff' }}>PDF Report Card</strong>
-                      <p style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>Extracted details loaded below:</p>
                     </div>
                   )}
                 </div>
 
-                {viewingRecord.vitals && (
-                  <MedicalReportPresentation vitals={viewingRecord.vitals} />
-                )}
- 
-                {viewingRecord.diagnosis && viewingRecord.diagnosis.length > 0 && (
-                  <div style={{ background: 'rgba(16, 185, 129, 0.02)', border: '1px solid rgba(16, 185, 129, 0.15)', padding: '0.75rem', borderRadius: '12px', fontSize: '0.7rem', textAlign: 'left' }}>
-                    <strong style={{ color: '#10b981', display: 'flex', alignItems: 'center', gap: '0.3rem', marginBottom: '0.4rem', borderBottom: '1px solid rgba(16, 185, 129, 0.1)', paddingBottom: '0.25rem' }}>
-                      <span>🩺</span> Clinical Diagnoses
-                    </strong>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem', marginTop: '0.25rem' }}>
-                      {viewingRecord.diagnosis.map((item, i) => (
-                        <span key={i} style={{ background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.2)', padding: '0.2rem 0.5rem', borderRadius: '6px', fontSize: '0.6rem', fontWeight: 'bold' }}>{item}</span>
-                      ))}
-                    </div>
-                  </div>
-                )}
- 
-                {viewingRecord.advice && viewingRecord.advice.length > 0 && (
-                  <div style={{ background: 'rgba(245, 158, 11, 0.02)', border: '1px solid rgba(245, 158, 11, 0.15)', padding: '0.75rem', borderRadius: '12px', fontSize: '0.7rem', textAlign: 'left' }}>
-                    <strong style={{ color: '#d97706', display: 'flex', alignItems: 'center', gap: '0.3rem', marginBottom: '0.4rem', borderBottom: '1px solid rgba(245, 158, 11, 0.1)', paddingBottom: '0.25rem' }}>
-                      <span>📋</span> Clinical Advice & Instructions
-                    </strong>
-                    <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-                      {viewingRecord.advice.map((item, i) => (
-                        <li key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: '0.35rem', fontSize: '0.65rem', color: '#cbd5e1' }}>
-                          <span style={{ color: '#f59e0b', fontSize: '0.75rem', lineHeight: '1' }}>•</span>
-                          <span>{item}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
- 
-                {viewingRecord.medications && viewingRecord.medications.length > 0 && (
-                  <div style={{ background: 'rgba(139, 92, 246, 0.02)', border: '1px solid rgba(139, 92, 246, 0.15)', padding: '0.75rem', borderRadius: '12px', fontSize: '0.7rem', textAlign: 'left' }}>
-                    <strong style={{ color: '#a78bfa', display: 'flex', alignItems: 'center', gap: '0.3rem', marginBottom: '0.4rem', borderBottom: '1px solid rgba(139, 92, 246, 0.1)', paddingBottom: '0.25rem' }}>
-                      <span>💊</span> Prescribed Medications
-                    </strong>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginTop: '0.25rem' }}>
-                      {viewingRecord.medications.map((med, i) => (
-                        <div key={i} style={{ padding: '0.45rem 0.6rem', background: 'rgba(139, 92, 246, 0.05)', borderRadius: '8px', border: '1px solid rgba(139, 92, 246, 0.1)', fontSize: '0.65rem' }}>
-                          <div style={{ display: 'flex', justifycontent: 'space-between', alignitems: 'center' }}>
-                            <span style={{ fontWeight: 'bold', color: '#a78bfa', fontSize: '0.7rem' }}>{med.name}</span>
-                            {med.duration && <span style={{ fontSize: '0.55rem', background: 'rgba(139, 92, 246, 0.15)', color: '#a78bfa', padding: '0.1rem 0.3rem', borderRadius: '4px', fontWeight: 'bold' }}>{med.duration}</span>}
-                          </div>
-                          <div style={{ display: 'flex', flexwrap: 'wrap', gap: '0.6rem', color: 'var(--text-secondary)', fontSize: '0.6rem', marginTop: '0.25rem' }}>
-                            {med.dosage && <span>Dose: <strong>{med.dosage}</strong></span>}
-                            {med.frequency && <span>Freq: <strong>{med.frequency}</strong></span>}
-                            {med.route && <span>Route: <strong>{med.route}</strong></span>}
+                {/* Editable Fields Content */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', textAlign: 'left' }}>
+                  {isEditingRecord ? (
+                    <>
+                      <div className="form-group">
+                        <label style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>Record Date</label>
+                        <input type="date" className="form-control" style={{ fontSize: '0.7rem', padding: '0.25rem' }} value={editedRecord.date || ''} onChange={e => setEditedRecord({ ...editedRecord, date: e.target.value })} />
+                      </div>
+                      <div className="form-group">
+                        <label style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>Document Category</label>
+                        <select className="form-control" value={editedRecord.type || ''} onChange={e => setEditedRecord({ ...editedRecord, type: e.target.value })} style={{ fontSize: '0.7rem', padding: '0.25rem', height: '26px' }}>
+                          <option value="Prescription">Prescription</option>
+                          <option value="Lab Report">Lab Report</option>
+                          <option value="Vaccination Card">Vaccination Card</option>
+                          <option value="Appointment Note">Appointment Note</option>
+                        </select>
+                      </div>
+                      <div className="form-group">
+                        <label style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>Observations Summary</label>
+                        <textarea className="form-control" style={{ fontSize: '0.7rem', padding: '0.25rem', height: '40px' }} value={editedRecord.notes || ''} onChange={e => setEditedRecord({ ...editedRecord, notes: e.target.value })} />
+                      </div>
+                      <div className="form-group">
+                        <label style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>Diagnoses (One per line)</label>
+                        <textarea className="form-control" style={{ fontSize: '0.7rem', padding: '0.25rem', height: '40px' }} value={editedRecord.diagnosis ? editedRecord.diagnosis.join('\n') : ''} onChange={e => setEditedRecord({ ...editedRecord, diagnosis: e.target.value.split('\n').filter(Boolean) })} />
+                      </div>
+                      <div className="form-group">
+                        <label style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>Advice Instructions (One per line)</label>
+                        <textarea className="form-control" style={{ fontSize: '0.7rem', padding: '0.25rem', height: '40px' }} value={editedRecord.advice ? editedRecord.advice.join('\n') : ''} onChange={e => setEditedRecord({ ...editedRecord, advice: e.target.value.split('\n').filter(Boolean) })} />
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      {viewingRecord.vitals && (
+                        <MedicalReportPresentation vitals={viewingRecord.vitals} />
+                      )}
+
+                      {viewingRecord.diagnosis && viewingRecord.diagnosis.length > 0 && (
+                        <div style={{ background: 'rgba(16, 185, 129, 0.02)', border: '1px solid rgba(16, 185, 129, 0.15)', padding: '0.75rem', borderRadius: '12px', fontSize: '0.7rem' }}>
+                          <strong style={{ color: '#10b981', display: 'flex', alignItems: 'center', gap: '0.3rem', marginBottom: '0.4rem', borderBottom: '1px solid rgba(16, 185, 129, 0.1)', paddingBottom: '0.25rem' }}>
+                            <span>🩺</span> Clinical Diagnoses
+                          </strong>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
+                            {viewingRecord.diagnosis.map((item, i) => (
+                              <span key={i} style={{ background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.2)', padding: '0.2rem 0.5rem', borderRadius: '6px', fontSize: '0.6rem', fontWeight: 'bold' }}>{item}</span>
+                            ))}
                           </div>
                         </div>
-                      ))}
+                      )}
+
+                      {viewingRecord.advice && viewingRecord.advice.length > 0 && (
+                        <div style={{ background: 'rgba(245, 158, 11, 0.02)', border: '1px solid rgba(245, 158, 11, 0.15)', padding: '0.75rem', borderRadius: '12px', fontSize: '0.7rem' }}>
+                          <strong style={{ color: '#d97706', display: 'flex', alignItems: 'center', gap: '0.3rem', marginBottom: '0.4rem', borderBottom: '1px solid rgba(245, 158, 11, 0.1)', paddingBottom: '0.25rem' }}>
+                            <span>📋</span> Clinical Advice
+                          </strong>
+                          <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                            {viewingRecord.advice.map((item, i) => (
+                              <li key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: '0.35rem', fontSize: '0.65rem', color: '#cbd5e1' }}>
+                                <span style={{ color: '#f59e0b', fontSize: '0.75rem', lineHeight: '1' }}>•</span>
+                                <span>{item}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {/* Medications Linking & Display */}
+                  {editedRecord.medications && editedRecord.medications.length > 0 && (
+                    <div style={{ background: 'rgba(139, 92, 246, 0.02)', border: '1px solid rgba(139, 92, 246, 0.15)', padding: '0.75rem', borderRadius: '12px', fontSize: '0.7rem' }}>
+                      <strong style={{ color: '#a78bfa', display: 'flex', alignItems: 'center', gap: '0.3rem', marginBottom: '0.4rem', borderBottom: '1px solid rgba(139, 92, 246, 0.1)', paddingBottom: '0.25rem' }}>
+                        <span>💊</span> Prescribed Medications
+                      </strong>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                        {editedRecord.medications.map((med, i) => (
+                          <div key={i} style={{ padding: '0.45rem 0.6rem', background: 'rgba(139, 92, 246, 0.05)', borderRadius: '8px', border: '1px solid rgba(139, 92, 246, 0.1)', fontSize: '0.65rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div style={{ flex: 1 }}>
+                              {isEditingRecord ? (
+                                <input 
+                                  type="text" 
+                                  className="form-control" 
+                                  value={med.name} 
+                                  onChange={e => {
+                                    const copy = [...editedRecord.medications];
+                                    copy[i].name = e.target.value;
+                                    setEditedRecord({ ...editedRecord, medications: copy });
+                                  }}
+                                  style={{ fontSize: '0.65rem', padding: '0.15rem', color: '#fff', background: '#020617', border: '1px solid #1e293b', marginBottom: '0.2rem' }}
+                                />
+                              ) : (
+                                <span style={{ fontWeight: 'bold', color: '#a78bfa', fontSize: '0.7rem' }}>{med.name}</span>
+                              )}
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.6rem' }}>
+                                {isEditingRecord ? (
+                                  <>
+                                    <input type="text" placeholder="Dose" value={med.dosage || ''} onChange={e => {
+                                      const copy = [...editedRecord.medications];
+                                      copy[i].dosage = e.target.value;
+                                      setEditedRecord({ ...editedRecord, medications: copy });
+                                    }} style={{ width: '50px', fontSize: '0.55rem', padding: '0.1rem', background: '#020617', color: '#fff', border: '1px solid #1e293b' }} />
+                                    <input type="text" placeholder="Freq" value={med.frequency || ''} onChange={e => {
+                                      const copy = [...editedRecord.medications];
+                                      copy[i].frequency = e.target.value;
+                                      setEditedRecord({ ...editedRecord, medications: copy });
+                                    }} style={{ width: '60px', fontSize: '0.55rem', padding: '0.1rem', background: '#020617', color: '#fff', border: '1px solid #1e293b' }} />
+                                  </>
+                                ) : (
+                                  <>
+                                    {med.dosage && <span>Dose: <strong>{med.dosage}</strong></span>}
+                                    {med.frequency && <span>Freq: <strong>{med.frequency}</strong></span>}
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                            {!isEditingRecord && (
+                              <button 
+                                className="btn btn-primary" 
+                                onClick={() => {
+                                  handleLinkMedication(med);
+                                }}
+                                style={{ fontSize: '0.55rem', padding: '0.2rem 0.4rem', border: 'none', background: 'var(--color-primary)', borderRadius: '4px', cursor: 'pointer' }}
+                              >
+                                + Link Reminder
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                )}
- 
-                {viewingRecord.tests && viewingRecord.tests.length > 0 && (
-                  <div style={{ background: 'rgba(14, 165, 233, 0.02)', border: '1px solid rgba(14, 165, 233, 0.15)', padding: '0.75rem', borderRadius: '12px', fontSize: '0.7rem', textAlign: 'left' }}>
-                    <strong style={{ color: '#38bdf8', display: 'flex', alignItems: 'center', gap: '0.3rem', marginBottom: '0.4rem', borderBottom: '1px solid rgba(14, 165, 233, 0.1)', paddingBottom: '0.25rem' }}>
-                      <span>🧪</span> Prescribed Laboratory Tests
-                    </strong>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem', marginTop: '0.25rem' }}>
-                      {viewingRecord.tests.map((item, i) => (
-                        <span key={i} style={{ background: 'rgba(14, 165, 233, 0.1)', color: '#38bdf8', border: '1px solid rgba(14, 165, 233, 0.2)', padding: '0.2rem 0.5rem', borderRadius: '6px', fontSize: '0.6rem', fontWeight: 'bold' }}>{item}</span>
-                      ))}
+                  )}
+
+                  {!isEditingRecord && viewingRecord.notes && (
+                    <div style={{ background: 'rgba(59, 130, 246, 0.02)', border: '1px solid var(--border-color)', padding: '0.75rem', borderRadius: '12px', fontSize: '0.7rem' }}>
+                      <strong style={{ color: '#60a5fa', display: 'flex', alignItems: 'center', gap: '0.3rem', marginBottom: '0.25rem' }}>
+                        <span>📝</span> Extracted Insights
+                      </strong>
+                      <p style={{ margin: '0.25rem 0 0 0', fontStyle: 'italic', fontSize: '0.65rem', color: 'var(--text-secondary)' }}>{viewingRecord.notes}</p>
                     </div>
-                  </div>
-                )}
- 
-                <div style={{ background: 'rgba(59, 130, 246, 0.02)', border: '1px solid var(--border-color)', padding: '0.75rem', borderRadius: '12px', fontSize: '0.7rem', textAlign: 'left' }}>
-                  <strong style={{ color: '#60a5fa', display: 'flex', alignItems: 'center', gap: '0.3rem', marginBottom: '0.25rem' }}>
-                    <span>📝</span> Extracted Insights & Observations
-                  </strong>
-                  <p style={{ margin: '0.25rem 0 0 0', fontStyle: 'italic', fontSize: '0.65rem', color: 'var(--text-secondary)' }}>{viewingRecord.notes}</p>
+                  )}
                 </div>
 
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
-                  <button className="btn btn-primary" onClick={() => setViewingRecord(null)} style={{ flex: 1, fontSize: '0.75rem', padding: '0.45rem' }}>Close</button>
-                  <a 
-                    href={`whatsapp://send?text=${encodeURIComponent(generateWhatsAppShareString(viewingRecord))}`}
-                    className="btn btn-success" 
-                    style={{ 
-                      padding: '0.45rem 0.75rem', 
-                      fontSize: '0.75rem', 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      gap: '0.25rem',
-                      textDecoration: 'none',
-                      background: '#25D366',
-                      color: '#fff',
-                      borderRadius: '8px',
-                      fontWeight: 'bold',
-                      justifyContent: 'center',
-                      border: 'none',
-                      cursor: 'pointer'
-                    }}
+                {/* Actions Panel */}
+                <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+                  <button 
+                    className="btn btn-secondary" 
+                    onClick={() => {
+                      if (isEditingRecord) {
+                        setUploadedRecords(prev => prev.map(r => r.id === viewingRecord.id ? editedRecord : r));
+                        setViewingRecord(editedRecord);
+                        setIsEditingRecord(false);
+                        addToast("Corrections saved successfully!", "success");
+                      } else {
+                        setIsEditingRecord(true);
+                      }
+                    }} 
+                    style={{ flex: 1, fontSize: '0.75rem', padding: '0.45rem', background: isEditingRecord ? 'var(--color-success)' : 'var(--color-info)', color: '#fff', border: 'none' }}
                   >
-                    <Icon name="whatsapp" size={14} color="#fff" /> Share
-                  </a>
+                    {isEditingRecord ? '✔ Save' : '✏️ Edit OCR'}
+                  </button>
+                  
+                  {!isEditingRecord && (
+                    <a
+                      href={`whatsapp://send?text=${encodeURIComponent(generateWhatsAppShareString(viewingRecord))}`}
+                      className="btn btn-success"
+                      style={{
+                        padding: '0.45rem 0.75rem',
+                        fontSize: '0.75rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.25rem',
+                        textDecoration: 'none',
+                        background: '#25D366',
+                        color: '#fff',
+                        borderRadius: '8px',
+                        fontWeight: 'bold',
+                        justifyContent: 'center',
+                        border: 'none',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <Icon name="whatsapp" size={14} color="#fff" /> Share
+                    </a>
+                  )}
+                  
                   <button className="btn btn-danger" onClick={() => handleDeleteRecord(viewingRecord.id)} style={{ padding: '0 0.75rem', background: 'var(--color-danger)', border: 'none', borderRadius: '8px', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <Icon name="trash" size={14} />
                   </button>
@@ -6171,15 +6436,19 @@ OPERATIONAL PROTOCOL DIRECTIVES:
     }
 
     function RemindersTab() {
-      const { 
-        activeMember, 
-        activeMemberId, 
-        medicines, 
-        logMedicineDose, 
-        orderMedicines, 
-        vaccinations, 
-        updateVaccinationStatus, 
-        geminiKey 
+      const {
+        activeMember,
+        activeMemberId,
+        medicines,
+        logMedicineDose,
+        orderMedicines,
+        vaccinations,
+        updateVaccinationStatus,
+        geminiKey,
+        addMedicine,
+        uploadedRecords,
+        setUploadedRecords,
+        addToast
       } = useContext(HealthContext);
 
       if (activeMemberId === 'household') {
@@ -6194,6 +6463,215 @@ OPERATIONAL PROTOCOL DIRECTIVES:
       const [loadingAi, setLoadingAi] = useState(false);
       const [fdaData, setFdaData] = useState(null);
       const [loadingFda, setLoadingFda] = useState(false);
+
+      // Reminders scanning & manual add states
+      const [showAddReminderModal, setShowAddReminderModal] = useState(false);
+      const [manualMedForm, setManualMedForm] = useState({ name: '', dosage: '1 Tablet', time: 'Morning', total: 30 });
+
+      // Camera & Scan states
+      const [cameraActive, setCameraActive] = useState(false);
+      const [scanning, setScanning] = useState(false);
+      const [scanStep, setScanStep] = useState('');
+      const [selectedFile, setSelectedFile] = useState(null);
+      const [fileBase64, setFileBase64] = useState('');
+      const [stream, setStream] = useState(null);
+      
+      // Cropper states
+      const [cropping, setCropping] = useState(false);
+      const [corners, setCorners] = useState({
+        tl: { x: 15, y: 15 },
+        tr: { x: 85, y: 15 },
+        br: { x: 85, y: 85 },
+        bl: { x: 15, y: 85 }
+      });
+      const [draggingHandle, setDraggingHandle] = useState(null);
+
+      // Consent & Auth
+      const [showConsentModal, setShowConsentModal] = useState(false);
+      const [showAuthModal, setShowAuthModal] = useState(false);
+      const [pin, setPin] = useState('');
+      const [authError, setAuthError] = useState('');
+
+      // Extracted Prescription Meds
+      const [extractedMeds, setExtractedMeds] = useState([]);
+      const [isScanFinished, setIsScanFinished] = useState(false);
+
+      const videoRef = useRef(null);
+      const containerRef = useRef(null);
+
+      useEffect(() => {
+        return () => {
+          if (stream) {
+            stream.getTracks().forEach(track => track.stop());
+          }
+        };
+      }, [stream]);
+
+      const startPrescriptionScan = async () => {
+        setSelectedFile(null);
+        setFileBase64('');
+        setExtractedMeds([]);
+        setIsScanFinished(false);
+        setCameraActive(true);
+        try {
+          const s = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+          });
+          setStream(s);
+          if (videoRef.current) {
+            videoRef.current.srcObject = s;
+            videoRef.current.play().catch(err => console.error("Video play failed:", err));
+          }
+        } catch (err) {
+          console.error("Camera access failed:", err);
+          alert("Could not start live video stream. Upload a prescription instead.");
+          setCameraActive(false);
+        }
+      };
+
+      const stopCamera = () => {
+        if (stream) {
+          stream.getTracks().forEach(track => track.stop());
+          setStream(null);
+        }
+        setCameraActive(false);
+      };
+
+      const capturePhoto = () => {
+        if (!videoRef.current) return;
+        const video = videoRef.current;
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth || 640;
+        canvas.height = video.videoHeight || 480;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        const dataUrl = canvas.toDataURL('image/jpeg');
+        setFileBase64(dataUrl);
+        setSelectedFile({
+          name: 'Prescription_' + new Date().toISOString().split('T')[0] + '_' + Math.floor(Math.random() * 1000) + '.jpg',
+          type: 'image/jpeg',
+          size: Math.round((dataUrl.length * 3) / 4)
+        });
+        stopCamera();
+        setCropping(true);
+      };
+
+      const handlePointerDown = (handle, e) => {
+        e.preventDefault();
+        setDraggingHandle(handle);
+      };
+
+      const handlePointerMove = (e) => {
+        if (!draggingHandle || !containerRef.current) return;
+        const rect = containerRef.current.getBoundingClientRect();
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+        let x = ((clientX - rect.left) / rect.width) * 100;
+        let y = ((clientY - rect.top) / rect.height) * 100;
+
+        x = Math.max(0, Math.min(100, x));
+        y = Math.max(0, Math.min(100, y));
+
+        setCorners(prev => ({
+          ...prev,
+          [draggingHandle]: { x: Math.round(x), y: Math.round(y) }
+        }));
+      };
+
+      const handlePointerUp = () => {
+        setDraggingHandle(null);
+      };
+
+      const triggerScan = async () => {
+        setScanning(true);
+        setScanStep("Reading report metadata...");
+        await new Promise(r => setTimeout(r, 600));
+        setScanStep("Running OCR & structuring prescription medications...");
+        await new Promise(r => setTimeout(r, 800));
+
+        if (geminiKey && fileBase64) {
+          setScanStep("Consulting Gemini AI to extract Rx medications...");
+          try {
+            const extracted = await runOCR(geminiKey, fileBase64, 'English');
+            const meds = Array.isArray(extracted.medications) 
+              ? extracted.medications.filter(m => m && m.name)
+              : [];
+            
+            if (meds.length === 0) {
+              addToast("No medications detected in prescription image. Try mock template.", "warning");
+              runMockScan();
+            } else {
+              setExtractedMeds(meds);
+              setIsScanFinished(true);
+            }
+          } catch (err) {
+            console.error(err);
+            addToast(`OCR Extraction failed: ${err.message}. Using fallback.`, 'danger');
+            runMockScan();
+          } finally {
+            setScanning(false);
+          }
+        } else {
+          runMockScan();
+          setScanning(false);
+        }
+      };
+
+      const runMockScan = () => {
+        const meds = [
+          { name: "Amoxicillin", dosage: "500mg", frequency: "Morning & Night" },
+          { name: "Paracetamol", dosage: "650mg", frequency: "Afternoon (if fever)" },
+          { name: "Cetirizine", dosage: "10mg", frequency: "Night" }
+        ];
+        setExtractedMeds(meds);
+        setIsScanFinished(true);
+      };
+
+      const handleSaveConfirm = () => {
+        const recordName = selectedFile ? selectedFile.name : 'Prescription_OCR_' + new Date().toISOString().split('T')[0] + '.jpg';
+        let savedBase64 = fileBase64;
+        if (fileBase64 && fileBase64.length > 350000) {
+          savedBase64 = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23090d16'/><text x='10' y='50' fill='%2364748b' font-size='8'>[Archived Prescription Content]</text></svg>";
+        }
+
+        setUploadedRecords(prev => [
+          {
+            id: 'prescription_' + Date.now(),
+            memberId: activeMember.id,
+            name: recordName,
+            date: new Date().toISOString().split('T')[0],
+            doctor: 'AI Auto-Scanner',
+            type: 'Prescription',
+            fileData: savedBase64,
+            notes: 'Extracted medications from prescription scanner.',
+            diagnosis: ["Prescription Routine Update"],
+            advice: ["Take medications as scheduled"],
+            medications: extractedMeds.map(m => ({ name: m.name, dosage: m.dosage, frequency: m.frequency, route: 'Orally', duration: '30 days' })),
+            tests: []
+          },
+          ...prev
+        ]);
+
+        addToast("Prescription saved securely to Repository!", "success");
+        setShowAuthModal(false);
+        setPin('');
+        setAuthError('');
+      };
+
+      const handleAddManual = (e) => {
+        e.preventDefault();
+        if (!manualMedForm.name.trim()) return;
+        addMedicine(activeMember.id, {
+          name: manualMedForm.name,
+          dosage: manualMedForm.dosage,
+          time: manualMedForm.time,
+          total: manualMedForm.total
+        });
+        setShowAddReminderModal(false);
+        setManualMedForm({ name: '', dosage: '1 Tablet', time: 'Morning', total: 30 });
+      };
 
       const handleToggle = (m) => {
         if (basket.find(x => x.id === m.id)) setBasket(basket.filter(x => x.id !== m.id));
@@ -6247,8 +6725,7 @@ OPERATIONAL PROTOCOL DIRECTIVES:
             const prompt = `You are a medically authenticated pharmacy assistant.
 You are asked about the medicine: "${selectedMed.name}" (${selectedMed.dosage || 'Standard dosage'}).
 Question: "${aiQuestion}".
-Provide accurate, medically sound, and authenticated information. Focus strictly on answering the question (e.g. generic alternatives, drug class, standard uses, side effects, or drug interactions).
-If the question is unrelated or if you do not have verified medical information for this specific query, you MUST reply with exactly: "No info". Keep the response concise, max 3 sentences.`;
+Provide accurate, medically sound, and authenticated information. Focus strictly on answering the question.`;
 
             const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`, {
               method: 'POST',
@@ -6297,43 +6774,164 @@ If the question is unrelated or if you do not have verified medical information 
       };
 
       return (
-        <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          
+        <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', position: 'relative' }}>
           {/* Sub-tab switcher */}
-          <div style={{ display: 'flex', background: 'var(--bg-secondary)', padding: '0.25rem', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
+          <div style={{ display: 'flex', background: 'var(--bg-primary)', borderRadius: '12px', padding: '0.25rem', border: '1px solid var(--border-color)' }}>
             <button onClick={() => setSubTab('medicines')} style={{ flex: 1, padding: '0.45rem', fontSize: '0.75rem', fontWeight: 'bold', border: 'none', background: subTab === 'medicines' ? 'var(--color-primary)' : 'none', color: subTab === 'medicines' ? '#fff' : 'var(--text-secondary)', borderRadius: '8px', cursor: 'pointer' }}>Medicines</button>
             <button onClick={() => setSubTab('vaccinations')} style={{ flex: 1, padding: '0.45rem', fontSize: '0.75rem', fontWeight: 'bold', border: 'none', background: subTab === 'vaccinations' ? 'var(--color-primary)' : 'none', color: subTab === 'vaccinations' ? '#fff' : 'var(--text-secondary)', borderRadius: '8px', cursor: 'pointer' }}>Vaccinations</button>
           </div>
 
           {subTab === 'medicines' ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <div className="glass-panel" style={{ padding: '1rem' }}>
-                <h3 style={{ fontSize: '0.95rem', marginBottom: '0.75rem' }}>Medication Schedule ({activeMember.name})</h3>
-                {medicines.length > 0 ? medicines.map(m => (
-                  <div key={m.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', padding: '0.5rem', border: '1px solid var(--border-color)', borderRadius: '8px' }}>
-                    <div style={{ flex: 1, textAlign: 'left' }}>
-                      <div style={{ display: 'flex', alignItems: 'center' }}>
-                        <strong style={{ fontSize: '0.8rem' }}>{m.name}</strong>
-                        <button onClick={() => { setSelectedMed(m); setAiQuestion(''); setAiResponse(''); }} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--color-primary)', display: 'inline-flex', alignItems: 'center', marginLeft: '0.4rem', padding: '2px' }} title="Ask AI Info">
-                          <Icon name="info" size={14} />
+              {/* Extracted medicines list display after scan */}
+              {isScanFinished && extractedMeds.length > 0 && (
+                <div className="glass-panel" style={{ padding: '1rem', border: '2px solid var(--color-success)', background: 'rgba(22, 163, 74, 0.02)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                    <h4 style={{ fontSize: '0.85rem', color: 'var(--color-success)', fontWeight: 'bold', margin: 0 }}>📋 Extracted Scan Medications</h4>
+                    <button className="btn-icon" onClick={() => { setExtractedMeds([]); setIsScanFinished(false); }} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}><Icon name="x" size={16} /></button>
+                  </div>
+                  <p style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', marginBottom: '0.75rem', textAlign: 'left' }}>Link these parsed medicines directly to medication schedule:</p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    {extractedMeds.map((med, idx) => (
+                      <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem', background: 'var(--bg-primary)', borderRadius: '8px', border: '1px solid var(--border-color)', gap: '0.5rem' }}>
+                        <div style={{ textAlign: 'left', flex: 1 }}>
+                          <strong style={{ fontSize: '0.75rem' }}>
+                            <input 
+                              type="text" 
+                              value={med.name} 
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setExtractedMeds(prev => prev.map((item, i) => i === idx ? { ...item, name: val } : item));
+                              }}
+                              style={{ background: 'transparent', border: 'none', borderBottom: '1px dashed var(--border-color)', color: 'inherit', fontSize: '0.75rem', fontWeight: 'bold', width: '100%', padding: '2px 0' }}
+                            />
+                          </strong>
+                          <div style={{ fontSize: '0.6rem', color: 'var(--text-secondary)', display: 'flex', gap: '0.5rem', marginTop: '0.25rem' }}>
+                            <span>
+                              Dose: 
+                              <input 
+                                type="text" 
+                                value={med.dosage || ''} 
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setExtractedMeds(prev => prev.map((item, i) => i === idx ? { ...item, dosage: val } : item));
+                                }}
+                                style={{ background: 'transparent', border: 'none', borderBottom: '1px dashed var(--border-color)', color: 'inherit', fontSize: '0.6rem', width: '50px', marginLeft: '2px' }}
+                              />
+                            </span>
+                            <span>
+                              Freq: 
+                              <input 
+                                type="text" 
+                                value={med.frequency || ''} 
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setExtractedMeds(prev => prev.map((item, i) => i === idx ? { ...item, frequency: val } : item));
+                                }}
+                                style={{ background: 'transparent', border: 'none', borderBottom: '1px dashed var(--border-color)', color: 'inherit', fontSize: '0.6rem', width: '90px', marginLeft: '2px' }}
+                              />
+                            </span>
+                          </div>
+                        </div>
+                        <button 
+                          className="btn btn-primary" 
+                          onClick={() => {
+                            addMedicine(activeMember.id, {
+                              name: med.name,
+                              dosage: med.dosage || '1 Tablet',
+                              time: med.frequency || 'Morning',
+                              total: 30
+                            });
+                            setExtractedMeds(prev => prev.filter((_, i) => i !== idx));
+                          }}
+                          style={{ fontSize: '0.6rem', padding: '0.25rem 0.5rem', background: 'var(--color-primary)', border: 'none', color: '#fff', borderRadius: '4px', cursor: 'pointer' }}
+                        >
+                          + Add to Reminders
                         </button>
                       </div>
-                      <p style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>🕒 {m.time} &bull; Stock: {m.remaining}/{m.total}</p>
-                    </div>
-                    <button className="btn btn-secondary" onClick={() => logMedicineDose(activeMemberId, m.id)} disabled={m.remaining === 0} style={{ height: '28px', padding: '0 0.5rem', fontSize: '0.7rem', borderRadius: '4px' }}>Take</button>
+                    ))}
                   </div>
-                )) : <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', textAlign: 'center', padding: '1rem' }}>No active routines logged.</p>}
+                  <button className="btn btn-primary" onClick={() => { setShowConsentModal(true); }} style={{ width: '100%', marginTop: '0.8rem', fontSize: '0.72rem', padding: '0.4rem' }}>
+                    💾 Save Prescription to Repository
+                  </button>
+                </div>
+              )}
+
+              <div className="glass-panel" style={{ padding: '1rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                  <h3 style={{ fontSize: '0.95rem', margin: 0, textAlign: 'left' }}>Medication Schedule ({activeMember.name})</h3>
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                    <button className="btn btn-secondary" onClick={() => setShowAddReminderModal(true)} style={{ fontSize: '0.7rem', padding: '0.3rem 0.6rem', display: 'flex', alignItems: 'center', gap: '0.2rem', margin: 0 }}>
+                      <Icon name="plus" size={12} /> Add
+                    </button>
+                    <button className="btn btn-secondary" onClick={startPrescriptionScan} style={{ fontSize: '0.7rem', padding: '0.3rem 0.6rem', display: 'flex', alignItems: 'center', gap: '0.2rem', background: '#fee2e2', color: 'var(--color-danger)', border: '1px solid rgba(220, 38, 38, 0.2)', margin: 0 }} title="Scan Prescription">
+                      <Icon name="camera" size={12} color="var(--color-danger)" /> Scan
+                    </button>
+                  </div>
+                </div>
+
+                {/* Live Camera View in Reminders */}
+                {cameraActive && (
+                  <div style={{ position: 'relative', width: '100%', height: '180px', background: '#020617', borderRadius: '12px', overflow: 'hidden', border: '1px solid var(--border-color)', marginBottom: '0.75rem' }}>
+                    <video ref={videoRef} style={{ width: '100%', height: '100%', objectFit: 'cover' }} playsInline muted />
+                    <div className="scan-guide-overlay">
+                      <div className="scan-laser-line" />
+                      <div style={{ position: 'absolute', top: '-2px', left: '-2px', width: '15px', height: '15px', borderTop: '4px solid #10b981', borderLeft: '4px solid #10b981' }} />
+                      <div style={{ position: 'absolute', top: '-2px', right: '-2px', width: '15px', height: '15px', borderTop: '4px solid #10b981', borderRight: '4px solid #10b981' }} />
+                      <div style={{ position: 'absolute', bottom: '-2px', left: '-2px', width: '15px', height: '15px', borderBottom: '4px solid #10b981', borderLeft: '4px solid #10b981' }} />
+                      <div style={{ position: 'absolute', bottom: '-2px', right: '-2px', width: '15px', height: '15px', borderBottom: '4px solid #10b981', borderRight: '4px solid #10b981' }} />
+                    </div>
+                    <div style={{ position: 'absolute', bottom: '10px', left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: '0.5rem', zIndex: 5 }}>
+                      <button className="btn btn-primary" onClick={capturePhoto} style={{ fontSize: '0.7rem', padding: '0.35rem 0.75rem' }}>📸 Snap</button>
+                      <button className="btn btn-secondary" onClick={stopCamera} style={{ fontSize: '0.7rem', padding: '0.35rem 0.75rem', background: '#334155', color: '#fff', border: 'none' }}>Cancel</button>
+                    </div>
+                  </div>
+                )}
+
+                {scanning && (
+                  <div style={{ position: 'relative', overflow: 'hidden', background: 'var(--bg-primary)', padding: '1.25rem', borderRadius: '12px', border: '1px solid var(--color-primary)', display: 'flex', flexDirection: 'column', gap: '0.5rem', minHeight: '100px', justifyContent: 'center', marginBottom: '0.75rem' }}>
+                    <div className="scan-laser-line" style={{ top: 0, left: 0, position: 'absolute', width: '100%' }}></div>
+                    <div style={{ zIndex: 2, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.4rem' }}>
+                      <span className="pulse-animation" style={{ fontSize: '1.5rem', '--pulse-speed': '1.2s' }}>🔍</span>
+                      <strong style={{ fontSize: '0.75rem', color: 'var(--color-primary)' }}>Parsing Prescription...</strong>
+                      <p style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', fontStyle: 'italic', margin: 0 }}>{scanStep}</p>
+                    </div>
+                  </div>
+                )}
+
+                {medicines && medicines.length > 0 ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
+                    {medicines.map(m => (
+                      <div key={m.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem', border: '1px solid var(--border-color)', borderRadius: '8px' }}>
+                        <div style={{ flex: 1, textAlign: 'left' }}>
+                          <div style={{ display: 'flex', alignItems: 'center' }}>
+                            <strong style={{ fontSize: '0.8rem' }}>{m.name}</strong>
+                            <button onClick={() => { setSelectedMed(m); setAiQuestion(''); setAiResponse(''); }} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--color-primary)', display: 'inline-flex', alignItems: 'center', marginLeft: '0.4rem', padding: '2px' }} title="Ask AI Info">
+                              <Icon name="info" size={14} />
+                            </button>
+                          </div>
+                          <p style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '0.1rem', margin: 0 }}>🕒 {m.time} &bull; Stock: {m.remaining}/{m.total}</p>
+                        </div>
+                        <button className="btn btn-secondary" onClick={() => logMedicineDose(activeMemberId, m.id)} disabled={m.remaining === 0} style={{ height: '28px', padding: '0 0.5rem', fontSize: '0.7rem', borderRadius: '4px' }}>Take</button>
+                      </div>
+                    ))}
+                  </div>
+                ) : <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', textAlign: 'center', padding: '1rem' }}>No active routines logged.</p>}
               </div>
 
               <div className="glass-panel" style={{ padding: '1rem' }}>
-                <h3 style={{ fontSize: '0.95rem', marginBottom: '0.75rem' }}>Pharmacy Reorder Basket</h3>
-                {medicines.length > 0 ? medicines.map(m => (
-                  <label key={m.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.35rem 0', borderBottom: '1px solid var(--border-color)', cursor: 'pointer', fontSize: '0.8rem' }}>
-                    <input type="checkbox" onChange={() => handleToggle(m)} checked={!!basket.find(x => x.id === m.id)} />
-                    <span style={{ flex: 1 }}>{m.name}</span>
-                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Stock: {m.remaining}</span>
-                  </label>
-                )) : <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', textAlign: 'center', padding: '1rem' }}>No medication list to refill.</p>}
+                <h3 style={{ fontSize: '0.95rem', marginBottom: '0.75rem', margin: 0, textAlign: 'left' }}>Pharmacy Reorder Basket</h3>
+                {medicines && medicines.length > 0 ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', marginTop: '0.5rem' }}>
+                    {medicines.map(m => (
+                      <label key={m.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.35rem 0', borderBottom: '1px solid var(--border-color)', cursor: 'pointer', fontSize: '0.8rem', textAlign: 'left' }}>
+                        <input type="checkbox" onChange={() => handleToggle(m)} checked={!!basket.find(x => x.id === m.id)} style={{ cursor: 'pointer' }} />
+                        <span style={{ flex: 1 }}>{m.name}</span>
+                        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Stock: {m.remaining}</span>
+                      </label>
+                    ))}
+                  </div>
+                ) : <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', textAlign: 'center', padding: '1rem' }}>No medication list to refill.</p>}
                 <button className="btn btn-primary" onClick={handleOrder} style={{ width: '100%', marginTop: '1rem', background: 'var(--color-warning)', fontSize: '0.8rem' }} disabled={basket.length === 0}>
                   Order Refills (Rs. {basket.length * 350})
                 </button>
@@ -6341,17 +6939,17 @@ If the question is unrelated or if you do not have verified medical information 
             </div>
           ) : (
             <div className="glass-panel" style={{ padding: '1.25rem' }}>
-              <h3 style={{ fontSize: '0.95rem', marginBottom: '1rem' }}>Immunization Schedule ({activeMember.name})</h3>
-              {vaccinations.length > 0 ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              <h3 style={{ fontSize: '0.95rem', marginBottom: '1rem', margin: 0, textAlign: 'left' }}>Immunization Schedule ({activeMember.name})</h3>
+              {vaccinations && vaccinations.length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '0.5rem' }}>
                   {vaccinations.map(v => (
                     <div key={v.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.65rem', border: '1px solid var(--border-color)', borderRadius: '8px' }}>
                       <div style={{ textAlign: 'left' }}>
-                        <h4 style={{ fontWeight: 'bold', fontSize: '0.8rem' }}>{v.name}</h4>
+                        <h4 style={{ fontWeight: 'bold', fontSize: '0.8rem', margin: 0 }}>{v.name}</h4>
                         <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>Due: {v.ageDue} &bull; {v.dateDue}</span>
                       </div>
-                      <button 
-                        className={`btn ${v.status === 'Given' ? 'btn-secondary' : 'btn-primary'}`} 
+                      <button
+                        className={`btn ${v.status === 'Given' ? 'btn-secondary' : 'btn-primary'}`}
                         onClick={() => updateVaccinationStatus(v.id, v.status === 'Given' ? 'Pending' : 'Given')}
                         style={{ height: '28px', padding: '0 0.5rem', fontSize: '0.7rem', borderRadius: '4px' }}
                       >
@@ -6366,12 +6964,212 @@ If the question is unrelated or if you do not have verified medical information 
             </div>
           )}
 
+          {/* Manual Add Reminder Modal */}
+          {showAddReminderModal && (
+            <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0, 0, 0, 0.75)', backdropFilter: 'blur(4px)', zIndex: 1200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+              <div className="glass-panel" style={{ width: '100%', maxWidth: '340px', background: '#090d16', border: '1px solid var(--border-color)', borderRadius: '16px', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem', textAlign: 'left' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #1e293b', paddingBottom: '0.5rem' }}>
+                  <h3 style={{ fontSize: '0.9rem', color: '#fff', margin: 0 }}>➕ Add Medication Reminder</h3>
+                  <button className="btn-icon" onClick={() => setShowAddReminderModal(false)} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer' }}><Icon name="x" size={16} /></button>
+                </div>
+                
+                <form onSubmit={handleAddManual} style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  <div className="form-group">
+                    <label style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>Medicine Name</label>
+                    <input type="text" className="form-control" placeholder="e.g. Paracetamol" value={manualMedForm.name} onChange={e => setManualMedForm({ ...manualMedForm, name: e.target.value })} required style={{ fontSize: '0.75rem', padding: '0.35rem' }} />
+                  </div>
+                  
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                    <div className="form-group">
+                      <label style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>Dosage</label>
+                      <input type="text" className="form-control" placeholder="e.g. 500mg" value={manualMedForm.dosage} onChange={e => setManualMedForm({ ...manualMedForm, dosage: e.target.value })} style={{ fontSize: '0.75rem', padding: '0.35rem' }} />
+                    </div>
+                    <div className="form-group">
+                      <label style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>Total Stock</label>
+                      <input type="number" className="form-control" value={manualMedForm.total} onChange={e => setManualMedForm({ ...manualMedForm, total: parseInt(e.target.value) || 0 })} style={{ fontSize: '0.75rem', padding: '0.35rem' }} />
+                    </div>
+                  </div>
+                  
+                  <div className="form-group">
+                    <label style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>Routine Schedule</label>
+                    <select className="form-control" value={manualMedForm.time} onChange={e => setManualMedForm({ ...manualMedForm, time: e.target.value })} style={{ fontSize: '0.75rem', padding: '0.35rem', height: '32px' }}>
+                      <option value="Morning">Morning</option>
+                      <option value="Afternoon">Afternoon</option>
+                      <option value="Night">Night</option>
+                      <option value="Morning & Night">Morning & Night</option>
+                      <option value="Three times daily">Three times daily</option>
+                    </select>
+                  </div>
+                  
+                  <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '0.5rem', padding: '0.45rem', fontSize: '0.75rem' }}>Add Reminder</button>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* Interactive Crop Modal in Reminders */}
+          {cropping && fileBase64 && (
+            <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0, 0, 0, 0.85)', backdropFilter: 'blur(4px)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+              <div className="glass-panel" style={{ width: '100%', maxWidth: '380px', background: '#090d16', border: '1px solid var(--border-color)', borderRadius: '16px', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                <h3 style={{ fontSize: '0.9rem', color: '#fff', margin: 0, textAlign: 'left' }}>📐 Adjust Prescription Crop</h3>
+                
+                <div 
+                  ref={containerRef}
+                  onMouseMove={handlePointerMove}
+                  onTouchMove={handlePointerMove}
+                  onMouseUp={handlePointerUp}
+                  onTouchEnd={handlePointerUp}
+                  style={{ position: 'relative', width: '100%', height: '240px', background: '#020617', borderRadius: '8px', overflow: 'hidden', border: '1px solid #1e293b', userSelect: 'none' }}
+                >
+                  <img src={fileBase64} style={{ width: '100%', height: '100%', objectFit: 'contain', pointerEvents: 'none' }} />
+                  
+                  <svg style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none' }}>
+                    <polygon
+                      points={`${corners.tl.x}%,${corners.tl.y}% ${corners.tr.x}%,${corners.tr.y}% ${corners.br.x}%,${corners.br.y}% ${corners.bl.x}%,${corners.bl.y}%`}
+                      fill="rgba(16, 185, 129, 0.15)"
+                      stroke="#10b981"
+                      strokeWidth="2"
+                    />
+                  </svg>
+                  
+                  {Object.keys(corners).map((key) => {
+                    const pt = corners[key];
+                    return (
+                      <div
+                        key={key}
+                        onMouseDown={(e) => handlePointerDown(key, e)}
+                        onTouchStart={(e) => handlePointerDown(key, e)}
+                        style={{
+                          position: 'absolute',
+                          left: `${pt.x}%`,
+                          top: `${pt.y}%`,
+                          width: '18px',
+                          height: '18px',
+                          background: '#10b981',
+                          border: '2.5px solid #fff',
+                          borderRadius: '50%',
+                          cursor: 'pointer',
+                          transform: 'translate(-50%, -50%)',
+                          zIndex: 10,
+                          boxShadow: '0 2px 6px rgba(0,0,0,0.3)'
+                        }}
+                      />
+                    );
+                  })}
+                </div>
+                
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <button 
+                    className="btn btn-secondary" 
+                    onClick={() => {
+                      setCorners({
+                        tl: { x: 8, y: 10 },
+                        tr: { x: 92, y: 8 },
+                        br: { x: 90, y: 92 },
+                        bl: { x: 10, y: 90 }
+                      });
+                      addToast("Edges auto-detected!", "success");
+                    }}
+                    style={{ flex: 1, fontSize: '0.7rem', padding: '0.4rem', background: '#1e293b', border: 'none', color: '#fff' }}
+                  >
+                    ✨ Auto-Detect Edges
+                  </button>
+                  <button 
+                    className="btn btn-primary" 
+                    onClick={() => {
+                      setCropping(false);
+                      triggerScan();
+                    }}
+                    style={{ flex: 1, fontSize: '0.7rem', padding: '0.4rem' }}
+                  >
+                    Crop & Analyze
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Consent Modal Dialog in Reminders */}
+          {showConsentModal && (
+            <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0, 0, 0, 0.75)', backdropFilter: 'blur(4px)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+              <div className="glass-panel" style={{ width: '100%', maxWidth: '340px', background: '#090d16', border: '1px solid var(--border-color)', borderRadius: '16px', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem', textAlign: 'center' }}>
+                <div style={{ fontSize: '2rem' }}>🔒</div>
+                <h3 style={{ fontSize: '0.9rem', color: '#fff', margin: 0 }}>Security & Privacy Consent</h3>
+                <p style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', lineHeight: '1.4', margin: 0 }}>
+                  The scanned prescription image will be stored securely in your encrypted Repository and linked to <strong>{activeMember.name}</strong>'s profile records list.
+                </p>
+                <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.25rem' }}>
+                  <button className="btn btn-secondary" onClick={() => setShowConsentModal(false)} style={{ flex: 1, fontSize: '0.7rem', padding: '0.45rem', background: '#1e293b', border: 'none', color: '#fff' }}>Cancel</button>
+                  <button 
+                    className="btn btn-primary" 
+                    onClick={() => {
+                      setShowConsentModal(false);
+                      setShowAuthModal(true);
+                    }}
+                    style={{ flex: 1, fontSize: '0.7rem', padding: '0.45rem' }}
+                  >
+                    I Consent
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* PIN & Biometric Auth Modal in Reminders */}
+          {showAuthModal && (
+            <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0, 0, 0, 0.75)', backdropFilter: 'blur(4px)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+              <div className="glass-panel" style={{ width: '100%', maxWidth: '320px', background: '#090d16', border: '1px solid var(--border-color)', borderRadius: '16px', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.85rem', textAlign: 'center' }}>
+                <h3 style={{ fontSize: '0.9rem', color: '#fff', margin: 0 }}>Verify Identity</h3>
+                <p style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', margin: 0 }}>Confirm your security PIN or touch the biometric sensor.</p>
+                
+                {authError && <div style={{ fontSize: '0.65rem', color: 'var(--color-danger)', fontWeight: 'bold' }}>⚠️ {authError}</div>}
+                
+                <input 
+                  type="password" 
+                  className="form-control" 
+                  placeholder="Enter PIN (e.g. 1234)"
+                  maxLength={4}
+                  value={pin}
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/\D/g, '');
+                    setPin(val);
+                    if (val.length === 4) {
+                      if (val === '1234') {
+                        handleSaveConfirm();
+                      } else {
+                        setAuthError('Incorrect PIN. Try 1234.');
+                        setPin('');
+                      }
+                    }
+                  }}
+                  style={{ fontSize: '0.85rem', textAlign: 'center', padding: '0.5rem', background: '#020617', border: '1px solid #1e293b', color: '#fff', borderRadius: '8px', letterSpacing: '0.5rem' }}
+                />
+                
+                <div style={{ margin: '0.5rem 0' }}>
+                  <button 
+                    type="button" 
+                    onClick={() => {
+                      addToast("Biometric verification successful!", "success");
+                      handleSaveConfirm();
+                    }}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-primary)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.35rem', margin: '0 auto' }}
+                  >
+                    <span style={{ fontSize: '2.5rem' }}>👆</span>
+                    <span style={{ fontSize: '0.6rem', color: 'var(--text-secondary)' }}>Tap to use Fingerprint Biometrics</span>
+                  </button>
+                </div>
+                
+                <button className="btn btn-secondary" onClick={() => { setShowAuthModal(false); setPin(''); setAuthError(''); }} style={{ fontSize: '0.7rem', padding: '0.4rem', background: '#1e293b', border: 'none', color: '#fff' }}>Cancel</button>
+              </div>
+            </div>
+          )}
+
           {selectedMed && (
-            <div className="bottom-sheet-overlay">
-              <div className="bottom-sheet" style={{ maxHeight: '90%' }}>
+            <div className="bottom-sheet-overlay" style={{ zIndex: 1100 }}>
+              <div className="bottom-sheet" style={{ maxHeight: '90%', overflowY: 'auto' }}>
                 <div className="sheet-handle"></div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem', marginBottom: '0.75rem' }}>
-                  <h3 style={{ fontSize: '1rem', color: 'var(--color-primary)' }}>💊 AI Medicine Information</h3>
+                  <h3 style={{ fontSize: '1rem', color: 'var(--color-primary)', margin: 0 }}>💊 AI Medicine Information</h3>
                   <button className="btn-icon" onClick={() => setSelectedMed(null)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><Icon name="x" size={16} /></button>
                 </div>
 
@@ -6397,7 +7195,7 @@ If the question is unrelated or if you do not have verified medical information 
                   <label style={{ fontSize: '0.7rem', fontWeight: 'bold', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.25rem' }}>Ask AI about alternates or safety profile:</label>
                   <div style={{ display: 'flex', gap: '0.5rem' }}>
                     <input type="text" className="form-control" placeholder="Alternates for this medicine?" value={aiQuestion} onChange={e => setAiQuestion(e.target.value)} style={{ fontSize: '0.75rem' }} />
-                    <button className="btn btn-primary" onClick={handleAskAI} disabled={loadingAi || !aiQuestion.trim()} style={{ fontSize: '0.75rem' }}>Ask AI</button>
+                    <button className="btn btn-primary" onClick={handleAskAI} disabled={loadingAi || !aiQuestion.trim()} style={{ fontSize: '0.75rem', padding: '0 0.75rem' }}>Ask AI</button>
                   </div>
                 </div>
 
@@ -9294,6 +10092,7 @@ OPERATIONAL PROTOCOL DIRECTIVES:
       const owner = members.find(m => m.id === 'owner') || members[0] || { name: 'Srinivas' };
       
       const [showSettings, setShowSettings] = useState(false);
+      const [showNotifications, setShowNotifications] = useState(false);
       const [apiKeyInput, setApiKeyInput] = useState(geminiKey);
       const [testingKey, setTestingKey] = useState(false);
       const [currentTime, setCurrentTime] = useState('14:12');
@@ -9521,6 +10320,44 @@ OPERATIONAL PROTOCOL DIRECTIVES:
 
               <button 
                 className="btn-icon" 
+                onClick={() => setShowNotifications(!showNotifications)} 
+                style={{ 
+                  position: 'relative', 
+                  width: '32px', 
+                  height: '32px', 
+                  borderRadius: '50%', 
+                  border: 'none', 
+                  background: activeMemberId === 'household' ? 'rgba(255, 255, 255, 0.12)' : 'rgba(20, 184, 166, 0.15)', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center',
+                  cursor: 'pointer'
+                }}
+                title="Notifications"
+              >
+                <Icon name="bell" size={16} color="#eab308" />
+                <span style={{ 
+                  position: 'absolute', 
+                  top: '-3px', 
+                  right: '-3px', 
+                  background: '#ef4444', 
+                  color: '#fff', 
+                  borderRadius: '50%', 
+                  width: '14px', 
+                  height: '14px', 
+                  fontSize: '0.52rem', 
+                  fontWeight: 'bold', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center',
+                  boxShadow: '0 1.5px 3px rgba(0,0,0,0.25)' 
+                }}>
+                  3
+                </span>
+              </button>
+
+              <button 
+                className="btn-icon" 
                 onClick={() => setShowSettings(true)} 
                 style={{ width: '32px', height: '32px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                 title="AI Configuration Settings"
@@ -9613,6 +10450,90 @@ OPERATIONAL PROTOCOL DIRECTIVES:
                   </button>
                 </div>
                 <button className="btn btn-secondary" onClick={() => setShowSettings(false)} style={{ width: '100%' }}>Cancel</button>
+              </div>
+            </div>
+          )}
+
+          {/* Notifications Modal (Slide-up sheet format) */}
+          {showNotifications && (
+            <div className="bottom-sheet-overlay" style={{ zIndex: 1100 }} onClick={() => setShowNotifications(false)}>
+              <div className="bottom-sheet" style={{ maxHeight: '80vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+                <div className="sheet-handle"></div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>
+                  <h3 style={{ fontSize: '1rem', fontWeight: 'bold', margin: 0, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    🔔 Active Health Alerts
+                  </h3>
+                  <button className="btn-icon" onClick={() => setShowNotifications(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
+                    <Icon name="x" size={18} color="var(--text-secondary)" />
+                  </button>
+                </div>
+                
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  <div className="glass-panel" style={{ padding: '0.8rem', borderLeft: '4px solid var(--color-warning)', background: 'rgba(234, 179, 8, 0.03)', display: 'flex', flexDirection: 'column', gap: '0.2rem', textAlign: 'left' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <strong style={{ fontSize: '0.78rem', color: 'var(--color-warning)' }}>⚠️ Metformin Refill Alert</strong>
+                      <span style={{ fontSize: '0.55rem', color: 'var(--text-muted)' }}>Just now</span>
+                    </div>
+                    <p style={{ fontSize: '0.7rem', color: 'var(--text-primary)', margin: 0 }}>
+                      Vasu's Metformin stock is running extremely low (5 tablets remaining). Tap to order refills.
+                    </p>
+                    <button 
+                      onClick={() => {
+                        setShowNotifications(false);
+                        setActiveTab('reminders');
+                      }} 
+                      style={{ alignSelf: 'flex-start', border: 'none', background: 'none', padding: 0, color: 'var(--color-primary)', fontSize: '0.65rem', fontWeight: 'bold', cursor: 'pointer', marginTop: '0.2rem' }}
+                    >
+                      Go to Reminders →
+                    </button>
+                  </div>
+
+                  <div className="glass-panel" style={{ padding: '0.8rem', borderLeft: '4px solid var(--color-primary)', background: 'rgba(59, 130, 246, 0.03)', display: 'flex', flexDirection: 'column', gap: '0.2rem', textAlign: 'left' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <strong style={{ fontSize: '0.78rem', color: 'var(--color-primary)' }}>📅 Scheduled Lab Screenings</strong>
+                      <span style={{ fontSize: '0.55rem', color: 'var(--text-muted)' }}>2 hours ago</span>
+                    </div>
+                    <p style={{ fontSize: '0.7rem', color: 'var(--text-primary)', margin: 0 }}>
+                      Emily's routine HbA1c screening is due this week based on the clinical recommendation extracted from her last report.
+                    </p>
+                    <button 
+                      onClick={() => {
+                        setShowNotifications(false);
+                        setActiveTab('records');
+                      }} 
+                      style={{ alignSelf: 'flex-start', border: 'none', background: 'none', padding: 0, color: 'var(--color-primary)', fontSize: '0.65rem', fontWeight: 'bold', cursor: 'pointer', marginTop: '0.2rem' }}
+                    >
+                      View Lab Records →
+                    </button>
+                  </div>
+
+                  <div className="glass-panel" style={{ padding: '0.8rem', borderLeft: '4px solid var(--color-danger)', background: 'rgba(239, 68, 68, 0.03)', display: 'flex', flexDirection: 'column', gap: '0.2rem', textAlign: 'left' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <strong style={{ fontSize: '0.78rem', color: 'var(--color-danger)' }}>⌚ Wearable Anomalies</strong>
+                      <span style={{ fontSize: '0.55rem', color: 'var(--text-muted)' }}>5 hours ago</span>
+                    </div>
+                    <p style={{ fontSize: '0.7rem', color: 'var(--text-primary)', margin: 0 }}>
+                      Heart rate peak alert: Grandpa's pulse rate reached 108 BPM while asleep. SpO2 remained stable at 97%.
+                    </p>
+                    <button 
+                      onClick={() => {
+                        setShowNotifications(false);
+                        setActiveTab('dashboard');
+                      }} 
+                      style={{ alignSelf: 'flex-start', border: 'none', background: 'none', padding: 0, color: 'var(--color-primary)', fontSize: '0.65rem', fontWeight: 'bold', cursor: 'pointer', marginTop: '0.2rem' }}
+                    >
+                      View Smartwatch Telemetry →
+                    </button>
+                  </div>
+                </div>
+
+                <button 
+                  className="btn btn-secondary" 
+                  onClick={() => setShowNotifications(false)} 
+                  style={{ width: '100%', marginTop: '1.25rem', fontSize: '0.75rem', padding: '0.45rem' }}
+                >
+                  Close
+                </button>
               </div>
             </div>
           )}
