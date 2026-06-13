@@ -1753,6 +1753,7 @@ Output the results strictly as a JSON object matching this schema:
         file: <g><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></g>,
         watch: <g><circle cx="12" cy="12" r="7"/><path d="M12 9v3l1.5 1.5"/><path d="M16.51 7.16 19.5 3.5M16.51 16.84l3 3.66M7.49 7.16 4.5 3.5M7.49 16.84l-3 3.66"/></g>,
         plus: <g><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></g>,
+        edit: <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7 M18.5 2.5a2.12 2.12 0 1 1 3 3L12 15l-4 1 1-4Z"/>,
         x: <g><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></g>,
         alert: <g><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></g>,
         check: <polyline points="20 6 9 17 4 12"/>,
@@ -1939,9 +1940,9 @@ Output the results strictly as a JSON object matching this schema:
     ];
 
     const initialMembers = [
-      { id: 'owner', name: 'Srinivas', relation: 'Owner', mobile: '+91-9876543210', age: 35, gender: 'Male', weight: 75, avatar: './avatar_srinivas.png', bloodGroup: 'O+', colorTheme: 'teal' },
-      { id: 'mom', name: 'Lakshmi', relation: 'Spouse', mobile: '+91-9876543211', age: 31, gender: 'Female', weight: 62, avatar: './avatar_lakshmi.png', pregnancyMode: true, pregnancyWeeks: 28, dueDate: '2026-08-15', bloodGroup: 'B+', colorTheme: 'rose' },
-      { id: 'baby', name: 'Sia', relation: 'Child', mobile: '', age: 0.2, gender: 'Female', weight: 5.5, avatar: './avatar_sia.png', newbornMode: true, birthDate: '2026-03-20', bloodGroup: 'O+', colorTheme: 'blue' }
+      { id: 'owner', name: 'Srinivas', relation: 'Owner', mobile: '+91-9876543210', age: 35, gender: 'Male', weight: 75, avatar: './avatar_srinivas.png', bloodGroup: 'O+', colorTheme: 'teal', abhaId: '91-8842-1205-9931', abhaAddress: 'srinivas@abdm', insuranceProvider: 'Star Health Insurance', insurancePolicyName: 'Family Health Optima', insurancePolicyNumber: 'SHI-FH-887412', insuranceSumInsured: '10,00,000', insuranceExpiry: '2027-04-15', insuranceTPA: 'Medi Assist TPA' },
+      { id: 'mom', name: 'Lakshmi', relation: 'Spouse', mobile: '+91-9876543211', age: 31, gender: 'Female', weight: 62, avatar: './avatar_lakshmi.png', pregnancyMode: true, pregnancyWeeks: 28, dueDate: '2026-08-15', bloodGroup: 'B+', colorTheme: 'rose', abhaId: '91-7751-0982-1436', abhaAddress: 'lakshmi@abdm', insuranceProvider: 'HDFC ERGO', insurancePolicyName: 'Optima Secure', insurancePolicyNumber: 'HE-OS-455210', insuranceSumInsured: '15,00,000', insuranceExpiry: '2026-12-31', insuranceTPA: 'Family Health Plan TPA' },
+      { id: 'baby', name: 'Sia', relation: 'Child', mobile: '', age: 0.2, gender: 'Female', weight: 5.5, avatar: './avatar_sia.png', newbornMode: true, birthDate: '2026-03-20', bloodGroup: 'O+', colorTheme: 'blue', abhaId: '91-1102-8874-5690', abhaAddress: 'sia@abdm', insuranceProvider: 'HDFC ERGO', insurancePolicyName: 'Optima Secure (Floater)', insurancePolicyNumber: 'HE-OS-455210', insuranceSumInsured: '15,00,000', insuranceExpiry: '2026-12-31', insuranceTPA: 'Family Health Plan TPA' }
     ];
 
     const initialVitals = {
@@ -2135,6 +2136,14 @@ Output the results strictly as a JSON object matching this schema:
             return parsed.map(m => {
               const seed = initialMembers.find(s => s.id === m.id);
               return {
+                abhaId: seed ? seed.abhaId : '',
+                abhaAddress: seed ? seed.abhaAddress : '',
+                insuranceProvider: seed ? seed.insuranceProvider : '',
+                insurancePolicyName: seed ? seed.insurancePolicyName : '',
+                insurancePolicyNumber: seed ? seed.insurancePolicyNumber : '',
+                insuranceSumInsured: seed ? seed.insuranceSumInsured : '',
+                insuranceExpiry: seed ? seed.insuranceExpiry : '',
+                insuranceTPA: seed ? seed.insuranceTPA : '',
                 bloodGroup: seed ? seed.bloodGroup : (m.bloodGroup || ''),
                 colorTheme: seed ? seed.colorTheme : (m.colorTheme || 'teal'),
                 ...m
@@ -2730,7 +2739,15 @@ Output the results strictly as a JSON object matching this schema:
               dueDate: m.dueDate || '',
               newbornMode: m.newbornMode || false,
               birthDate: m.birthDate || '',
-              mobile: m.mobile || ''
+              mobile: m.mobile || '',
+              abhaId: m.abhaId || '',
+              abhaAddress: m.abhaAddress || '',
+              insuranceProvider: m.insuranceProvider || '',
+              insurancePolicyName: m.insurancePolicyName || '',
+              insurancePolicyNumber: m.insurancePolicyNumber || '',
+              insuranceSumInsured: m.insuranceSumInsured || '',
+              insuranceExpiry: m.insuranceExpiry || '',
+              insuranceTPA: m.insuranceTPA || ''
             });
             memberIdMap[m.id] = docRef.id;
           }
@@ -2949,7 +2966,15 @@ Output the results strictly as a JSON object matching this schema:
               dueDate: updatedFields.dueDate || '',
               newbornMode: updatedFields.newbornMode || false,
               birthDate: updatedFields.birthDate || '',
-              mobile: updatedFields.mobile || ''
+              mobile: updatedFields.mobile || '',
+              abhaId: updatedFields.abhaId || '',
+              abhaAddress: updatedFields.abhaAddress || '',
+              insuranceProvider: updatedFields.insuranceProvider || '',
+              insurancePolicyName: updatedFields.insurancePolicyName || '',
+              insurancePolicyNumber: updatedFields.insurancePolicyNumber || '',
+              insuranceSumInsured: updatedFields.insuranceSumInsured || '',
+              insuranceExpiry: updatedFields.insuranceExpiry || '',
+              insuranceTPA: updatedFields.insuranceTPA || ''
             });
             await writeAuditLog('UPDATE_FAMILY_MEMBER', currentUser.uid);
           } catch (e) {
@@ -3005,7 +3030,15 @@ Output the results strictly as a JSON object matching this schema:
               dueDate: member.dueDate || '',
               newbornMode: member.newbornMode || false,
               birthDate: member.birthDate || '',
-              mobile: member.mobile || ''
+              mobile: member.mobile || '',
+              abhaId: member.abhaId || '',
+              abhaAddress: member.abhaAddress || '',
+              insuranceProvider: member.insuranceProvider || '',
+              insurancePolicyName: member.insurancePolicyName || '',
+              insurancePolicyNumber: member.insurancePolicyNumber || '',
+              insuranceSumInsured: member.insuranceSumInsured || '',
+              insuranceExpiry: member.insuranceExpiry || '',
+              insuranceTPA: member.insuranceTPA || ''
             });
             
             // Add initial vitals record
@@ -4061,7 +4094,12 @@ Output the results strictly as a JSON object matching this schema:
       } = useContext(HealthContext);
 
       const [showAddModal, setShowAddModal] = useState(false);
-      const [addForm, setAddForm] = useState({ name: '', relation: 'Spouse', mobile: '', age: '', gender: 'Female', pregnancyMode: false, pregnancyWeeks: 12, dueDate: '', newbornMode: false, birthDate: '', weight: '', bloodGroup: '', avatar: '', colorTheme: 'teal' });
+      const [showAbhaSectionAddDash, setShowAbhaSectionAddDash] = useState(false);
+      const [showQrModal, setShowQrModal] = useState(false);
+      const [qrModalData, setQrModalData] = useState(null);
+      const [showInsuranceModal, setShowInsuranceModal] = useState(false);
+      const [insuranceModalData, setInsuranceModalData] = useState(null);
+      const [addForm, setAddForm] = useState({ name: '', relation: 'Spouse', mobile: '', age: '', gender: 'Female', pregnancyMode: false, pregnancyWeeks: 12, dueDate: '', newbornMode: false, birthDate: '', weight: '', bloodGroup: '', avatar: '', colorTheme: 'teal', abhaId: '', abhaAddress: '', insuranceProvider: '', insurancePolicyName: '', insurancePolicyNumber: '', insuranceSumInsured: '', insuranceExpiry: '', insuranceTPA: '' });
 
       const [showAddHistoryModal, setShowAddHistoryModal] = useState(false);
       const [historyForm, setHistoryForm] = useState({
@@ -4088,7 +4126,7 @@ Output the results strictly as a JSON object matching this schema:
         const nm = addFamilyMember({ ...addForm, age: parseFloat(addForm.age), weight: parseFloat(addForm.weight) || 60 });
         setActiveMemberId(nm.id);
         setShowAddModal(false);
-        setAddForm({ name: '', relation: 'Spouse', mobile: '', age: '', gender: 'Female', pregnancyMode: false, pregnancyWeeks: 12, dueDate: '', newbornMode: false, birthDate: '', weight: '', bloodGroup: '', avatar: '', colorTheme: 'teal' });
+        setAddForm({ name: '', relation: 'Spouse', mobile: '', age: '', gender: 'Female', pregnancyMode: false, pregnancyWeeks: 12, dueDate: '', newbornMode: false, birthDate: '', weight: '', bloodGroup: '', avatar: '', colorTheme: 'teal', abhaId: '', abhaAddress: '', insuranceProvider: '', insurancePolicyName: '', insurancePolicyNumber: '', insuranceSumInsured: '', insuranceExpiry: '', insuranceTPA: '' });
       };
 
       const selectProfile = (id) => {
@@ -4237,83 +4275,140 @@ Output the results strictly as a JSON object matching this schema:
 
           {/* Glance Health Summary Card / Personalized Vital Grid */}
           {activeMemberId === 'household' ? (
-            <div className="glance-health-card">
-              <strong style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: '0.6rem' }}>
-                Family Health Summary
-              </strong>
-              <div style={{ display: 'flex', flexDirection: 'column' }}>
-                {members.map(m => {
-                  const memberVitals = allVitals[m.id] || [];
-                  const latest = memberVitals.length > 0 ? memberVitals[memberVitals.length - 1] : null;
-                  
-                  let isStable = true;
-                  let statusText = 'Stable';
-                  let vitalSummaryStr = 'No recent readings';
-                  
-                  if (latest) {
-                    const sys = latest.bpSystolic;
-                    const dia = latest.bpDiastolic;
-                    const gluc = latest.glucose;
-                    const hr = latest.heartRate;
-                    const ox = latest.oxygen;
+            <>
+              <div className="glance-health-card">
+                <strong style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: '0.6rem' }}>
+                  Family Health Summary
+                </strong>
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  {members.map(m => {
+                    const memberVitals = allVitals[m.id] || [];
+                    const latest = memberVitals.length > 0 ? memberVitals[memberVitals.length - 1] : null;
                     
-                    if (m.id === 'baby') {
-                      if ((hr && (hr > 140 || hr < 100)) || (ox && ox < 92)) {
-                        isStable = false;
-                        statusText = hr && hr > 140 ? 'High HR' : 'Low Oxygen';
+                    let isStable = true;
+                    let statusText = 'Stable';
+                    let vitalSummaryStr = 'No recent readings';
+                    
+                    if (latest) {
+                      const sys = latest.bpSystolic;
+                      const dia = latest.bpDiastolic;
+                      const gluc = latest.glucose;
+                      const hr = latest.heartRate;
+                      const ox = latest.oxygen;
+                      
+                      if (m.id === 'baby') {
+                        if ((hr && (hr > 140 || hr < 100)) || (ox && ox < 92)) {
+                          isStable = false;
+                          statusText = hr && hr > 140 ? 'High HR' : 'Low Oxygen';
+                        }
+                      } else {
+                        if ((sys && (sys > 130 || sys < 95)) || (gluc && gluc > 120) || (ox && ox < 94)) {
+                          isStable = false;
+                          statusText = sys && sys > 130 ? 'Elevated BP' : gluc && gluc > 120 ? 'High Sugar' : 'Low SpO2';
+                        }
                       }
-                    } else {
-                      if ((sys && (sys > 130 || sys < 95)) || (gluc && gluc > 120) || (ox && ox < 94)) {
-                        isStable = false;
-                        statusText = sys && sys > 130 ? 'Elevated BP' : gluc && gluc > 120 ? 'High Sugar' : 'Low SpO2';
-                      }
+                      
+                      const bpStr = sys && dia ? `${sys}/${dia} BP` : '';
+                      const glucStr = gluc ? `${gluc} Sugar` : '';
+                      const hrStr = hr ? `${hr} HR` : '';
+                      vitalSummaryStr = [bpStr, glucStr, hrStr].filter(Boolean).join(' • ') || 'Vitals recorded';
                     }
                     
-                    const bpStr = sys && dia ? `${sys}/${dia} BP` : '';
-                    const glucStr = gluc ? `${gluc} Sugar` : '';
-                    const hrStr = hr ? `${hr} HR` : '';
-                    vitalSummaryStr = [bpStr, glucStr, hrStr].filter(Boolean).join(' • ') || 'Vitals recorded';
-                  }
-                  
-                  return (
-                    <div 
-                      key={m.id} 
-                      className="glance-member-row"
-                      onClick={() => selectProfile(m.id)}
-                      style={{ cursor: 'pointer', transition: 'background 0.2s' }}
-                    >
-                      <div className="glance-member-left">
-                        <div className="glance-avatar" style={{ border: `2px solid ${themeColors[m.colorTheme || 'teal']?.primary || 'var(--color-primary)'}`, boxShadow: '0 3px 6px rgba(0,0,0,0.1)' }}>
-                          {renderAvatar(m, '100%')}
+                    return (
+                      <div 
+                        key={m.id} 
+                        className="glance-member-row"
+                        onClick={() => selectProfile(m.id)}
+                        style={{ cursor: 'pointer', transition: 'background 0.2s' }}
+                      >
+                        <div className="glance-member-left">
+                          <div className="glance-avatar" style={{ border: `2px solid ${themeColors[m.colorTheme || 'teal']?.primary || 'var(--color-primary)'}`, boxShadow: '0 3px 6px rgba(0,0,0,0.1)' }}>
+                            {renderAvatar(m, '100%')}
+                          </div>
+                          <div className="glance-member-info">
+                            <span className="glance-member-name">{m.name}</span>
+                            <div style={{ fontSize: '0.6rem', color: 'var(--text-secondary)' }}>{m.relation}</div>
+                          </div>
                         </div>
-                        <div className="glance-member-info">
-                          <span className="glance-member-name">{m.name}</span>
-                          <div style={{ fontSize: '0.6rem', color: 'var(--text-secondary)' }}>{m.relation}</div>
+                        
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.15rem', flexShrink: 0 }}>
+                          <span className={`alert-badge ${isStable ? 'success' : 'danger'}`} style={{ fontSize: '0.52rem', padding: '0.05rem 0.25rem', borderRadius: '4px' }}>
+                            {isStable ? '🟢 Stable' : `🔴 ${statusText}`}
+                          </span>
+                          <span style={{ 
+                            fontSize: '0.58rem', 
+                            color: 'var(--text-muted)', 
+                            maxWidth: '120px', 
+                            overflow: 'hidden', 
+                            textOverflow: 'ellipsis', 
+                            whiteSpace: 'nowrap', 
+                            display: 'block', 
+                            textAlign: 'right' 
+                          }}>
+                            {vitalSummaryStr}
+                          </span>
                         </div>
                       </div>
-                      
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.15rem', flexShrink: 0 }}>
-                        <span className={`alert-badge ${isStable ? 'success' : 'danger'}`} style={{ fontSize: '0.52rem', padding: '0.05rem 0.25rem', borderRadius: '4px' }}>
-                          {isStable ? '🟢 Stable' : `🔴 ${statusText}`}
-                        </span>
-                        <span style={{ 
-                          fontSize: '0.58rem', 
-                          color: 'var(--text-muted)', 
-                          maxWidth: '120px', 
-                          overflow: 'hidden', 
-                          textOverflow: 'ellipsis', 
-                          whiteSpace: 'nowrap', 
-                          display: 'block', 
-                          textAlign: 'right' 
-                        }}>
-                          {vitalSummaryStr}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
-            </div>
+              
+              {/* Family ABHA & Insurance Portfolio Summary (Household View Only) */}
+              <div style={{ marginTop: '0.2rem' }}>
+                <strong style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', textAlign: 'left', marginBottom: '0.5rem' }}>
+                  Family Health Cards & Insurance
+                </strong>
+                <div className="glass-panel" style={{ padding: '0.85rem', background: 'var(--bg-secondary)', borderRadius: '12px', textAlign: 'left' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+                    {members.map((m, idx) => (
+                      <div key={m.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '0.5rem', borderBottom: idx === members.length - 1 ? 'none' : '1px solid var(--border-color)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <div style={{ width: '30px', height: '30px', borderRadius: '50%', overflow: 'hidden', flexShrink: 0, border: `1.5px solid ${themeColors[m.colorTheme || 'teal']?.primary || 'var(--border-color)'}` }}>
+                            {renderAvatar(m, '100%')}
+                          </div>
+                          <div>
+                            <strong style={{ fontSize: '0.72rem', color: 'var(--text-primary)', display: 'block' }}>{m.name}</strong>
+                            <span style={{ fontSize: '0.58rem', color: 'var(--text-secondary)' }}>
+                              ABHA: {m.abhaId ? 'Linked' : 'Not set'} &bull; Ins: {m.insuranceProvider ? 'Active' : 'Not set'}
+                            </span>
+                          </div>
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                          {m.insuranceSumInsured ? (
+                            <strong style={{ fontSize: '0.7rem', color: 'var(--color-primary)', display: 'block' }}>₹{m.insuranceSumInsured} Cover</strong>
+                          ) : (
+                            <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)' }}>No Cover</span>
+                          )}
+                          {m.abhaAddress && <span style={{ fontSize: '0.55rem', color: 'var(--text-secondary)', display: 'block' }}>{m.abhaAddress}</span>}
+                        </div>
+                      </div>
+                    ))}
+                    
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.25rem', paddingTop: '0.5rem', borderTop: '1px dashed var(--border-color)' }}>
+                      <span style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>Total Household Cover:</span>
+                      <strong style={{ fontSize: '0.75rem', color: 'var(--color-success)', fontWeight: '800' }}>
+                        ₹{(() => {
+                          let total = 0;
+                          const policies = new Set();
+                          members.forEach(m => {
+                            if (m.insurancePolicyNumber && m.insuranceSumInsured) {
+                              const key = `${m.insuranceProvider}-${m.insurancePolicyNumber}`;
+                              if (!policies.has(key)) {
+                                policies.add(key);
+                                const num = parseInt(m.insuranceSumInsured.replace(/,/g, ''));
+                                if (!isNaN(num)) total += num;
+                              }
+                            }
+                          });
+                          return total.toLocaleString('en-IN');
+                        })()}
+                      </strong>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </>
           ) : (
             <div>
               {/* Back Button to Dashboard */}
@@ -4432,6 +4527,159 @@ Output the results strictly as a JSON object matching this schema:
                     </div>
                   );
                 })()}
+              </div>
+              {/* ABHA ID & Health Insurance Cards */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '0.5rem' }}>
+                {/* ABHA Card */}
+                <div className="glass-panel" style={{ 
+                  background: `linear-gradient(135deg, ${themeColors[activeMember?.colorTheme || 'teal']?.primary || 'var(--color-primary)'}e8 0%, ${themeColors[activeMember?.colorTheme || 'teal']?.primary || 'var(--color-primary)'}99 100%)`,
+                  color: '#ffffff',
+                  borderRadius: '16px',
+                  padding: '1rem',
+                  position: 'relative',
+                  overflow: 'hidden',
+                  boxShadow: '0 8px 24px rgba(14, 159, 110, 0.15)',
+                  border: 'none',
+                  textAlign: 'left'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.25rem' }}>
+                    <div>
+                      <span style={{ fontSize: '0.52rem', textTransform: 'uppercase', letterSpacing: '1px', opacity: 0.9, display: 'block', fontWeight: 'bold' }}>Ayushman Bharat Digital Mission</span>
+                      <strong style={{ fontSize: '0.82rem', letterSpacing: '-0.01em' }}>ABHA Health Card</strong>
+                    </div>
+                    <span style={{ fontSize: '1.4rem', filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.1))' }}>🆔</span>
+                  </div>
+                  
+                  {activeMember.abhaId ? (
+                    <>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '0.75rem 0' }}>
+                        <span style={{ 
+                          fontFamily: 'monospace', 
+                          fontSize: '1.15rem', 
+                          fontWeight: 'bold', 
+                          letterSpacing: '2px',
+                          textShadow: '0 1px 2px rgba(0,0,0,0.2)'
+                        }}>
+                          {activeMember.abhaId}
+                        </span>
+                        <button 
+                          onClick={() => {
+                            navigator.clipboard.writeText(activeMember.abhaId);
+                            alert('ABHA ID copied to clipboard!');
+                          }} 
+                          style={{ background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: '6px', color: '#fff', padding: '0.2rem 0.4rem', cursor: 'pointer', fontSize: '0.58rem', display: 'flex', alignItems: 'center', gap: '2px' }}
+                        >
+                          📋 Copy
+                        </button>
+                      </div>
+                      
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: '1rem', borderTop: '1px solid rgba(255,255,255,0.15)', paddingTop: '0.75rem' }}>
+                        <div style={{ fontSize: '0.62rem', opacity: 0.9 }}>
+                          <div style={{ textTransform: 'uppercase', fontSize: '0.48rem', opacity: 0.7 }}>Health Address</div>
+                          <strong style={{ fontSize: '0.68rem' }}>{activeMember.abhaAddress || `${activeMember.name.toLowerCase().replace(/\s+/g, '')}@abdm`}</strong>
+                        </div>
+                        <button 
+                          onClick={() => {
+                            setQrModalData({ name: activeMember.name, abhaId: activeMember.abhaId, abhaAddress: activeMember.abhaAddress });
+                            setShowQrModal(true);
+                          }}
+                          style={{ background: '#ffffff', color: themeColors[activeMember?.colorTheme || 'teal']?.primary || 'var(--color-primary)', border: 'none', borderRadius: '8px', padding: '0.35rem 0.65rem', fontWeight: 'bold', fontSize: '0.62rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', boxShadow: '0 2px 6px rgba(0,0,0,0.1)' }}
+                        >
+                          🔍 View QR
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <div style={{ padding: '0.5rem 0', textAlign: 'center' }}>
+                      <span style={{ fontSize: '0.7rem', opacity: 0.85, display: 'block', marginBottom: '0.5rem' }}>No ABHA ID linked to this profile.</span>
+                      <button 
+                        onClick={() => setActiveTab('profiles')}
+                        style={{ background: '#ffffff', color: themeColors[activeMember?.colorTheme || 'teal']?.primary || 'var(--color-primary)', border: 'none', borderRadius: '8px', padding: '0.35rem 0.75rem', fontWeight: 'bold', fontSize: '0.62rem', cursor: 'pointer', boxShadow: '0 2px 6px rgba(0,0,0,0.1)' }}
+                      >
+                        Link ABHA ID
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Insurance Card */}
+                <div className="glass-panel" style={{ 
+                  background: 'var(--bg-secondary)',
+                  borderRadius: '16px',
+                  padding: '1rem',
+                  boxShadow: 'var(--shadow-sm)',
+                  textAlign: 'left',
+                  position: 'relative'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      <span style={{ fontSize: '1.1rem' }}>🛡️</span>
+                      <div>
+                        <strong style={{ fontSize: '0.78rem', color: 'var(--text-primary)', display: 'block' }}>
+                          {activeMember.insuranceProvider || 'Health Insurance'}
+                        </strong>
+                        <span style={{ fontSize: '0.62rem', color: 'var(--text-secondary)' }}>
+                          {activeMember.insurancePolicyName || 'No policy registered'}
+                        </span>
+                      </div>
+                    </div>
+                    
+                    {activeMember.insuranceExpiry && (
+                      <span className={`alert-badge ${
+                        Math.ceil((new Date(activeMember.insuranceExpiry) - new Date()) / (1000 * 60 * 60 * 24)) <= 30
+                          ? 'warning'
+                          : 'success'
+                      }`} style={{ fontSize: '0.52rem', padding: '0.1rem 0.3rem' }}>
+                        {Math.ceil((new Date(activeMember.insuranceExpiry) - new Date()) / (1000 * 60 * 60 * 24)) <= 0
+                          ? 'Expired'
+                          : Math.ceil((new Date(activeMember.insuranceExpiry) - new Date()) / (1000 * 60 * 60 * 24)) <= 30
+                          ? 'Expiring soon'
+                          : 'Active'
+                      }
+                      </span>
+                    )}
+                  </div>
+
+                  {activeMember.insurancePolicyNumber ? (
+                    <div style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '0.35rem', marginTop: '0.5rem', background: 'var(--bg-primary)', padding: '0.65rem', borderRadius: '10px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span>Policy No:</span>
+                        <strong style={{ color: 'var(--text-primary)' }}>{activeMember.insurancePolicyNumber}</strong>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span>Sum Insured:</span>
+                        <strong style={{ color: 'var(--color-primary)', fontWeight: '800' }}>₹{activeMember.insuranceSumInsured}</strong>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span>Expiry Date:</span>
+                        <strong>{activeMember.insuranceExpiry}</strong>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px dashed var(--border-color)', paddingTop: '0.35rem', marginTop: '0.15rem' }}>
+                        <span>TPA Partner:</span>
+                        <span>{activeMember.insuranceTPA || 'Direct Settlement'}</span>
+                      </div>
+                      <button 
+                        onClick={() => {
+                          setInsuranceModalData(activeMember);
+                          setShowInsuranceModal(true);
+                        }}
+                        style={{ background: 'var(--color-primary-light)', color: 'var(--color-primary)', border: 'none', borderRadius: '6px', padding: '0.3rem 0', fontWeight: 'bold', fontSize: '0.6rem', cursor: 'pointer', marginTop: '0.35rem', width: '100%' }}
+                      >
+                        View Coverage T&C & Claim Helpline
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={{ padding: '0.75rem 0', textAlign: 'center', background: 'var(--bg-primary)', borderRadius: '10px' }}>
+                      <span style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.4rem' }}>Secure your family. Link active health insurance policies.</span>
+                      <button 
+                        onClick={() => setActiveTab('profiles')}
+                        style={{ background: 'var(--color-primary-light)', color: 'var(--color-primary)', border: 'none', borderRadius: '6px', padding: '0.3rem 0.6rem', fontWeight: 'bold', fontSize: '0.6rem', cursor: 'pointer' }}
+                      >
+                        Add Policy Details
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Allergies & Chronic Conditions Card */}
@@ -4891,8 +5139,147 @@ Output the results strictly as a JSON object matching this schema:
                       </select>
                     </div>
                   </div>
+
+                  {/* Collapsible ABHA & Insurance Section */}
+                  <div style={{ margin: '0.5rem 0', padding: '0.5rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)' }}>
+                    <div 
+                      onClick={() => setShowAbhaSectionAddDash(!showAbhaSectionAddDash)} 
+                      style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
+                    >
+                      <strong style={{ fontSize: '0.65rem', color: 'var(--color-primary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                        ABHA & Insurance (Optional)
+                      </strong>
+                      <span style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>{showAbhaSectionAddDash ? '▲' : '▼'}</span>
+                    </div>
+                    {showAbhaSectionAddDash && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginTop: '0.5rem', textAlign: 'left' }}>
+                        <div className="form-group" style={{ marginBottom: '0.5rem' }}>
+                          <label style={{ fontSize: '0.7rem' }}>ABHA ID (14 digits)</label>
+                          <input type="text" className="form-control" style={{ padding: '0.4rem 0.6rem', fontSize: '0.75rem' }} value={addForm.abhaId} onChange={e => setAddForm({...addForm, abhaId: e.target.value})} placeholder="91-1234-5678-9012" />
+                        </div>
+                        <div className="form-group" style={{ marginBottom: '0.5rem' }}>
+                          <label style={{ fontSize: '0.7rem' }}>ABHA Address</label>
+                          <input type="text" className="form-control" style={{ padding: '0.4rem 0.6rem', fontSize: '0.75rem' }} value={addForm.abhaAddress} onChange={e => setAddForm({...addForm, abhaAddress: e.target.value})} placeholder="username@abdm" />
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.4rem' }}>
+                          <div className="form-group" style={{ marginBottom: '0.5rem' }}>
+                            <label style={{ fontSize: '0.7rem' }}>Insurer</label>
+                            <input type="text" className="form-control" style={{ padding: '0.4rem 0.6rem', fontSize: '0.75rem' }} value={addForm.insuranceProvider} onChange={e => setAddForm({...addForm, insuranceProvider: e.target.value})} placeholder="e.g. Star Health" />
+                          </div>
+                          <div className="form-group" style={{ marginBottom: '0.5rem' }}>
+                            <label style={{ fontSize: '0.7rem' }}>Policy Name</label>
+                            <input type="text" className="form-control" style={{ padding: '0.4rem 0.6rem', fontSize: '0.75rem' }} value={addForm.insurancePolicyName} onChange={e => setAddForm({...addForm, insurancePolicyName: e.target.value})} placeholder="e.g. Family Optima" />
+                          </div>
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.4rem' }}>
+                          <div className="form-group" style={{ marginBottom: '0.5rem' }}>
+                            <label style={{ fontSize: '0.7rem' }}>Policy Number</label>
+                            <input type="text" className="form-control" style={{ padding: '0.4rem 0.6rem', fontSize: '0.75rem' }} value={addForm.insurancePolicyNumber} onChange={e => setAddForm({...addForm, insurancePolicyNumber: e.target.value})} placeholder="POL-123456" />
+                          </div>
+                          <div className="form-group" style={{ marginBottom: '0.5rem' }}>
+                            <label style={{ fontSize: '0.7rem' }}>Sum Insured</label>
+                            <input type="text" className="form-control" style={{ padding: '0.4rem 0.6rem', fontSize: '0.75rem' }} value={addForm.insuranceSumInsured} onChange={e => setAddForm({...addForm, insuranceSumInsured: e.target.value})} placeholder="e.g. 10,00,000" />
+                          </div>
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.4rem' }}>
+                          <div className="form-group" style={{ marginBottom: '0.5rem' }}>
+                            <label style={{ fontSize: '0.7rem' }}>Expiry Date</label>
+                            <input type="date" className="form-control" style={{ padding: '0.4rem 0.6rem', fontSize: '0.75rem' }} value={addForm.insuranceExpiry} onChange={e => setAddForm({...addForm, insuranceExpiry: e.target.value})} />
+                          </div>
+                          <div className="form-group" style={{ marginBottom: '0.5rem' }}>
+                            <label style={{ fontSize: '0.7rem' }}>TPA Partner</label>
+                            <input type="text" className="form-control" style={{ padding: '0.4rem 0.6rem', fontSize: '0.75rem' }} value={addForm.insuranceTPA} onChange={e => setAddForm({...addForm, insuranceTPA: e.target.value})} placeholder="Medi Assist" />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
                   <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '0.5rem', padding: '0.5rem' }}>Register Profile</button>
                 </form>
+              </div>
+            </div>
+          )}
+
+          {/* ABHA QR Code Modal */}
+          {showQrModal && qrModalData && (
+            <div className="bottom-sheet-overlay" style={{ zIndex: 1200 }} onClick={() => setShowQrModal(false)}>
+              <div className="bottom-sheet" style={{ maxWidth: '360px', margin: '0 auto', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+                <div className="sheet-handle"></div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                  <strong style={{ fontSize: '0.9rem' }}>ABHA ID Digital QR</strong>
+                  <button onClick={() => setShowQrModal(false)} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '1.2rem', color: 'var(--text-secondary)' }}>×</button>
+                </div>
+                
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem', padding: '1rem 0' }}>
+                  <div style={{ background: '#ffffff', padding: '0.75rem', borderRadius: '12px', boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border-color)' }}>
+                    <img 
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=https://ndhm.gov.in/abha?id=${qrModalData.abhaId}&address=${qrModalData.abhaAddress}`} 
+                      alt="ABHA QR Code" 
+                      style={{ width: '160px', height: '160px' }}
+                    />
+                  </div>
+                  <span style={{ fontSize: '0.52rem', color: 'var(--text-muted)' }}>Scan with any ABDM-enabled health app to share digital records</span>
+                  
+                  <div style={{ width: '100%', background: 'var(--bg-primary)', padding: '0.75rem', borderRadius: '10px', marginTop: '0.5rem', textAlign: 'left' }}>
+                    <div style={{ fontSize: '0.65rem', marginBottom: '0.25rem', color: 'var(--text-primary)' }}>Name: <strong>{qrModalData.name}</strong></div>
+                    <div style={{ fontSize: '0.65rem', marginBottom: '0.25rem', color: 'var(--text-primary)' }}>ABHA ID: <strong>{qrModalData.abhaId}</strong></div>
+                    <div style={{ fontSize: '0.65rem', color: 'var(--text-primary)' }}>Health Address: <strong>{qrModalData.abhaAddress}</strong></div>
+                  </div>
+                </div>
+                
+                <button className="btn btn-secondary" onClick={() => setShowQrModal(false)} style={{ width: '100%', fontSize: '0.75rem', height: '36px' }}>Close</button>
+              </div>
+            </div>
+          )}
+
+          {/* Insurance T&C & Claims Modal */}
+          {showInsuranceModal && insuranceModalData && (
+            <div className="bottom-sheet-overlay" style={{ zIndex: 1200 }} onClick={() => setShowInsuranceModal(false)}>
+              <div className="bottom-sheet" style={{ maxHeight: '80vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+                <div className="sheet-handle"></div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                  <strong style={{ fontSize: '0.9rem' }}>🛡️ Policy Coverage & Details</strong>
+                  <button onClick={() => setShowInsuranceModal(false)} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '1.2rem', color: 'var(--text-secondary)' }}>×</button>
+                </div>
+                
+                <div style={{ textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  <div style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>
+                    <span style={{ fontSize: '0.58rem', textTransform: 'uppercase', color: 'var(--color-primary)', fontWeight: 'bold' }}>{insuranceModalData.insuranceProvider}</span>
+                    <h4 style={{ margin: 0, fontSize: '0.95rem', color: 'var(--text-primary)' }}>{insuranceModalData.insurancePolicyName}</h4>
+                    <div style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', marginTop: '0.15rem' }}>Policy Number: <strong>{insuranceModalData.insurancePolicyNumber}</strong></div>
+                  </div>
+                  
+                  <div>
+                    <strong style={{ fontSize: '0.7rem', display: 'block', marginBottom: '0.25rem', color: 'var(--text-primary)' }}>🏥 Key Coverage Terms & Conditions:</strong>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                      <div style={{ background: 'var(--bg-primary)', padding: '0.5rem', borderRadius: '8px', fontSize: '0.65rem', color: 'var(--text-secondary)' }}>
+                        🏢 <strong>Room Rent Limit:</strong> Single Private AC Room fully covered. Deluxe rooms subject to 15% co-pay.
+                      </div>
+                      <div style={{ background: 'var(--bg-primary)', padding: '0.5rem', borderRadius: '8px', fontSize: '0.65rem', color: 'var(--text-secondary)' }}>
+                        ⌛ <strong>Pre-Existing Diseases:</strong> Waiting period of 24 months (2 years) from policy inception.
+                      </div>
+                      <div style={{ background: 'var(--bg-primary)', padding: '0.5rem', borderRadius: '8px', fontSize: '0.65rem', color: 'var(--text-secondary)' }}>
+                        👶 <strong>Maternity Cover (if active):</strong> Covered up to ₹1,00,000 for normal and ₹1,50,000 for C-section (Lakshmi's policy active).
+                      </div>
+                      <div style={{ background: 'var(--bg-primary)', padding: '0.5rem', borderRadius: '8px', fontSize: '0.65rem', color: 'var(--text-secondary)' }}>
+                        💸 <strong>Co-Payment:</strong> 0% for treatments in Network Hospitals; 10% for non-network hospitals.
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div style={{ background: 'var(--color-danger-light)', border: '1px solid var(--color-danger)', borderRadius: '10px', padding: '0.75rem', marginTop: '0.25rem' }}>
+                    <strong style={{ fontSize: '0.7rem', color: 'var(--color-danger)', display: 'block', marginBottom: '0.25rem' }}>🚨 Emergency Cashless Claims & TPA:</strong>
+                    <div style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      <div>TPA: <strong>{insuranceModalData.insuranceTPA || 'Direct Settlement'}</strong></div>
+                      <div>TPA Toll-free Helpline: <strong style={{ color: 'var(--color-danger)' }}>1800-425-4444 / 1800-102-4477</strong></div>
+                      <div>Email Support: <strong>claims@tpa-helpline.com</strong></div>
+                      <div style={{ fontSize: '0.55rem', marginTop: '0.15rem', fontStyle: 'italic', color: 'var(--text-muted)' }}>Note: Pre-authorization request must be submitted within 24 hours of emergency hospitalization.</div>
+                    </div>
+                  </div>
+                  
+                  <button className="btn btn-primary" onClick={() => setShowInsuranceModal(false)} style={{ width: '100%', fontSize: '0.75rem', marginTop: '0.5rem' }}>Done</button>
+                </div>
               </div>
             </div>
           )}
@@ -7480,8 +7867,10 @@ Keep the output short, clean, and in standard markdown paragraphs (max 150 words
       const { members, addFamilyMember, updateFamilyMember, setActiveMemberId, setActiveTab, updateMemberAvatar } = useContext(HealthContext);
       const [showAdd, setShowAdd] = useState(false);
       const [editingMember, setEditingMember] = useState(null);
-      const [form, setForm] = useState({ name: '', relation: 'Spouse', mobile: '', age: '', gender: 'Female', pregnancyMode: false, pregnancyWeeks: 12, dueDate: '', newbornMode: false, birthDate: '', weight: '', bloodGroup: '', avatar: '', colorTheme: 'teal' });
-      const [editForm, setEditForm] = useState({ name: '', relation: 'Spouse', mobile: '', age: '', gender: 'Female', pregnancyMode: false, pregnancyWeeks: 12, dueDate: '', newbornMode: false, birthDate: '', weight: '', bloodGroup: '', avatar: '', colorTheme: 'teal' });
+      const [showAbhaSectionAdd, setShowAbhaSectionAdd] = useState(false);
+      const [showAbhaSectionEdit, setShowAbhaSectionEdit] = useState(false);
+      const [form, setForm] = useState({ name: '', relation: 'Spouse', mobile: '', age: '', gender: 'Female', pregnancyMode: false, pregnancyWeeks: 12, dueDate: '', newbornMode: false, birthDate: '', weight: '', bloodGroup: '', avatar: '', colorTheme: 'teal', abhaId: '', abhaAddress: '', insuranceProvider: '', insurancePolicyName: '', insurancePolicyNumber: '', insuranceSumInsured: '', insuranceExpiry: '', insuranceTPA: '' });
+      const [editForm, setEditForm] = useState({ name: '', relation: 'Spouse', mobile: '', age: '', gender: 'Female', pregnancyMode: false, pregnancyWeeks: 12, dueDate: '', newbornMode: false, birthDate: '', weight: '', bloodGroup: '', avatar: '', colorTheme: 'teal', abhaId: '', abhaAddress: '', insuranceProvider: '', insurancePolicyName: '', insurancePolicyNumber: '', insuranceSumInsured: '', insuranceExpiry: '', insuranceTPA: '' });
 
       const handleAdd = (e) => {
         e.preventDefault();
@@ -7575,6 +7964,8 @@ Keep the output short, clean, and in standard markdown paragraphs (max 150 words
                       {m.bloodGroup && <span className="alert-badge info" style={{ fontSize: '0.55rem', background: 'rgba(239, 68, 68, 0.12)', border: '1px solid rgba(239, 68, 68, 0.3)', color: '#f87171' }}>🩸 {m.bloodGroup}</span>}
                       {m.birthDate && <span className="alert-badge" style={{ fontSize: '0.55rem', background: 'var(--bg-primary)', color: 'var(--text-secondary)' }}>🎂 {m.birthDate}</span>}
                       {m.age && <span className="alert-badge" style={{ fontSize: '0.55rem', background: 'var(--bg-primary)', color: 'var(--text-secondary)' }}>{m.age} yrs</span>}
+                      {m.abhaId && <span className="alert-badge success" style={{ fontSize: '0.55rem', background: 'var(--color-success-light)', color: 'var(--color-success)', fontWeight: 'bold' }}>🆔 ABHA</span>}
+                      {m.insurancePolicyNumber && <span className="alert-badge info" style={{ fontSize: '0.55rem', background: 'var(--color-info-light)', color: 'var(--color-info)', fontWeight: 'bold' }}>🛡️ Insured</span>}
                     </div>
                   </div>
                 </div>
@@ -7761,6 +8152,61 @@ Keep the output short, clean, and in standard markdown paragraphs (max 150 words
                       </select>
                     </div>
                   </div>
+
+                  {/* Collapsible ABHA & Insurance Section */}
+                  <div style={{ margin: '1rem 0', padding: '0.75rem', borderRadius: '12px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)' }}>
+                    <div 
+                      onClick={() => setShowAbhaSectionAdd(!showAbhaSectionAdd)} 
+                      style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
+                    >
+                      <strong style={{ fontSize: '0.72rem', color: 'var(--color-primary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                        ABHA ID & Health Insurance (Optional)
+                      </strong>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{showAbhaSectionAdd ? '▲' : '▼'}</span>
+                    </div>
+                    {showAbhaSectionAdd && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem', marginTop: '0.75rem', textAlign: 'left' }}>
+                        <div className="form-group">
+                          <label>ABHA ID (14 digits)</label>
+                          <input type="text" className="form-control" value={form.abhaId} onChange={e => setForm({...form, abhaId: e.target.value})} placeholder="91-1234-5678-9012" />
+                        </div>
+                        <div className="form-group">
+                          <label>ABHA Address</label>
+                          <input type="text" className="form-control" value={form.abhaAddress} onChange={e => setForm({...form, abhaAddress: e.target.value})} placeholder="username@abdm" />
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                          <div className="form-group">
+                            <label>Insurer</label>
+                            <input type="text" className="form-control" value={form.insuranceProvider} onChange={e => setForm({...form, insuranceProvider: e.target.value})} placeholder="e.g. Star Health" />
+                          </div>
+                          <div className="form-group">
+                            <label>Policy Name</label>
+                            <input type="text" className="form-control" value={form.insurancePolicyName} onChange={e => setForm({...form, insurancePolicyName: e.target.value})} placeholder="e.g. Family Optima" />
+                          </div>
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                          <div className="form-group">
+                            <label>Policy Number</label>
+                            <input type="text" className="form-control" value={form.insurancePolicyNumber} onChange={e => setForm({...form, insurancePolicyNumber: e.target.value})} placeholder="POL-123456" />
+                          </div>
+                          <div className="form-group">
+                            <label>Sum Insured</label>
+                            <input type="text" className="form-control" value={form.insuranceSumInsured} onChange={e => setForm({...form, insuranceSumInsured: e.target.value})} placeholder="e.g. 10,00,000" />
+                          </div>
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                          <div className="form-group">
+                            <label>Expiry Date</label>
+                            <input type="date" className="form-control" value={form.insuranceExpiry} onChange={e => setForm({...form, insuranceExpiry: e.target.value})} />
+                          </div>
+                          <div className="form-group">
+                            <label>Third Party Admin (TPA)</label>
+                            <input type="text" className="form-control" value={form.insuranceTPA} onChange={e => setForm({...form, insuranceTPA: e.target.value})} placeholder="e.g. Medi Assist" />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                   
                   <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '0.5rem' }}>Register Profile</button>
                 </form>
@@ -7940,6 +8386,61 @@ Keep the output short, clean, and in standard markdown paragraphs (max 150 words
                         <option value="true">Yes</option>
                       </select>
                     </div>
+                  </div>
+
+                  {/* Collapsible ABHA & Insurance Section */}
+                  <div style={{ margin: '1rem 0', padding: '0.75rem', borderRadius: '12px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)' }}>
+                    <div 
+                      onClick={() => setShowAbhaSectionEdit(!showAbhaSectionEdit)} 
+                      style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
+                    >
+                      <strong style={{ fontSize: '0.72rem', color: 'var(--color-primary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                        ABHA ID & Health Insurance (Optional)
+                      </strong>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{showAbhaSectionEdit ? '▲' : '▼'}</span>
+                    </div>
+                    {showAbhaSectionEdit && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem', marginTop: '0.75rem', textAlign: 'left' }}>
+                        <div className="form-group">
+                          <label>ABHA ID (14 digits)</label>
+                          <input type="text" className="form-control" value={editForm.abhaId || ''} onChange={e => setEditForm({...editForm, abhaId: e.target.value})} placeholder="91-1234-5678-9012" />
+                        </div>
+                        <div className="form-group">
+                          <label>ABHA Address</label>
+                          <input type="text" className="form-control" value={editForm.abhaAddress || ''} onChange={e => setEditForm({...editForm, abhaAddress: e.target.value})} placeholder="username@abdm" />
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                          <div className="form-group">
+                            <label>Insurer</label>
+                            <input type="text" className="form-control" value={editForm.insuranceProvider || ''} onChange={e => setEditForm({...editForm, insuranceProvider: e.target.value})} placeholder="e.g. Star Health" />
+                          </div>
+                          <div className="form-group">
+                            <label>Policy Name</label>
+                            <input type="text" className="form-control" value={editForm.insurancePolicyName || ''} onChange={e => setEditForm({...editForm, insurancePolicyName: e.target.value})} placeholder="e.g. Family Optima" />
+                          </div>
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                          <div className="form-group">
+                            <label>Policy Number</label>
+                            <input type="text" className="form-control" value={editForm.insurancePolicyNumber || ''} onChange={e => setEditForm({...editForm, insurancePolicyNumber: e.target.value})} placeholder="POL-123456" />
+                          </div>
+                          <div className="form-group">
+                            <label>Sum Insured</label>
+                            <input type="text" className="form-control" value={editForm.insuranceSumInsured || ''} onChange={e => setEditForm({...editForm, insuranceSumInsured: e.target.value})} placeholder="e.g. 10,00,000" />
+                          </div>
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                          <div className="form-group">
+                            <label>Expiry Date</label>
+                            <input type="date" className="form-control" value={editForm.insuranceExpiry || ''} onChange={e => setEditForm({...editForm, insuranceExpiry: e.target.value})} />
+                          </div>
+                          <div className="form-group">
+                            <label>Third Party Admin (TPA)</label>
+                            <input type="text" className="form-control" value={editForm.insuranceTPA || ''} onChange={e => setEditForm({...editForm, insuranceTPA: e.target.value})} placeholder="e.g. Medi Assist" />
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                   
                   <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '0.5rem' }}>Save Details</button>

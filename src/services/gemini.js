@@ -124,3 +124,60 @@ ${JSON.stringify(clinicalContext)}
 
   return data.candidates?.[0]?.content?.parts?.[0]?.text || "No response generated.";
 };
+
+export const runVaccineOCR = async (apiKey, base64Image) => {
+  const model = "gemini-2.5-flash";
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+  
+  const ocrPrompt = `
+You are an advanced clinical assistant. Extract vaccination card details from the uploaded image.
+Perform parsing with high accuracy. Output the results strictly as a JSON object matching this schema:
+{
+  "vaccineName": "Name of the vaccine (e.g., BCG, Hepatitis B, MMR, Covaxin)",
+  "doseNumber": "Dose number (e.g., 1, 2, Booster, or Birth)",
+  "vaccinationDate": "YYYY-MM-DD",
+  "nextDueDate": "YYYY-MM-DD (next due date of vaccine, if specified)",
+  "hospital": "Name of hospital, clinic, or health provider",
+  "batchNumber": "Batch or lot number of the vaccine"
+}
+If any field is not found in the image, return null or empty string. Do not hallucinate.
+`;
+
+  const matches = base64Image.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,(.+)$/);
+  const mimeType = matches ? matches[1] : 'image/jpeg';
+  const rawData = matches ? matches[2] : base64Image;
+
+  const payload = {
+    contents: [
+      {
+        parts: [
+          { text: ocrPrompt },
+          {
+            inlineData: {
+              mimeType: mimeType,
+              data: rawData
+            }
+          }
+        ]
+      }
+    ],
+    generationConfig: {
+      responseMimeType: "application/json",
+      temperature: 0.0
+    }
+  };
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error?.message || "Gemini Vaccine OCR failed");
+  }
+
+  const textResult = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  return JSON.parse(textResult);
+};

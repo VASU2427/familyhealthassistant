@@ -19,9 +19,9 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 const HealthContext = createContext();
 
 const initialMembers = [
-  { id: 'owner', name: 'Srinivas', relation: 'Owner', mobile: '+91-9876543210', age: 35, gender: 'Male', weight: 75, avatar: '/avatar_srinivas.png', bloodGroup: 'O+', colorTheme: 'teal' },
-  { id: 'mom', name: 'Lakshmi', relation: 'Spouse', mobile: '+91-9876543211', age: 31, gender: 'Female', weight: 62, avatar: '/avatar_lakshmi.png', pregnancyMode: true, pregnancyWeeks: 28, dueDate: '2026-08-15', bloodGroup: 'B+', colorTheme: 'rose' },
-  { id: 'baby', name: 'Sia', relation: 'Child', mobile: '', age: 0.2, gender: 'Female', weight: 5.5, avatar: '/avatar_sia.png', newbornMode: true, birthDate: '2026-03-20', bloodGroup: 'O+', colorTheme: 'blue' }
+  { id: 'owner', name: 'Srinivas', relation: 'Owner', mobile: '+91-9876543210', age: 35, gender: 'Male', weight: 75, avatar: '/avatar_srinivas.png', bloodGroup: 'O+', colorTheme: 'teal', abhaId: '91-8842-1205-9931', abhaAddress: 'srinivas@abdm', insuranceProvider: 'Star Health Insurance', insurancePolicyName: 'Family Health Optima', insurancePolicyNumber: 'SHI-FH-887412', insuranceSumInsured: '10,00,000', insuranceExpiry: '2027-04-15', insuranceTPA: 'Medi Assist TPA' },
+  { id: 'mom', name: 'Lakshmi', relation: 'Spouse', mobile: '+91-9876543211', age: 31, gender: 'Female', weight: 62, avatar: '/avatar_lakshmi.png', pregnancyMode: true, pregnancyWeeks: 28, dueDate: '2026-08-15', bloodGroup: 'B+', colorTheme: 'rose', abhaId: '91-7751-0982-1436', abhaAddress: 'lakshmi@abdm', insuranceProvider: 'HDFC ERGO', insurancePolicyName: 'Optima Secure', insurancePolicyNumber: 'HE-OS-455210', insuranceSumInsured: '15,00,000', insuranceExpiry: '2026-12-31', insuranceTPA: 'Family Health Plan TPA' },
+  { id: 'baby', name: 'Sia', relation: 'Child', mobile: '', age: 0.2, gender: 'Female', weight: 5.5, avatar: '/avatar_sia.png', newbornMode: true, birthDate: '2026-03-20', bloodGroup: 'O+', colorTheme: 'blue', abhaId: '91-1102-8874-5690', abhaAddress: 'sia@abdm', insuranceProvider: 'HDFC ERGO', insurancePolicyName: 'Optima Secure (Floater)', insurancePolicyNumber: 'HE-OS-455210', insuranceSumInsured: '15,00,000', insuranceExpiry: '2026-12-31', insuranceTPA: 'Family Health Plan TPA' }
 ];
 
 const initialVitals = {
@@ -210,7 +210,30 @@ export const HealthProvider = ({ children }) => {
 
   const [members, setMembers] = useState(() => {
     const saved = localStorage.getItem('fh_members');
-    return saved ? JSON.parse(saved) : initialMembers;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        return parsed.map(m => {
+          const seed = initialMembers.find(s => s.id === m.id);
+          return {
+            abhaId: seed ? seed.abhaId : '',
+            abhaAddress: seed ? seed.abhaAddress : '',
+            insuranceProvider: seed ? seed.insuranceProvider : '',
+            insurancePolicyName: seed ? seed.insurancePolicyName : '',
+            insurancePolicyNumber: seed ? seed.insurancePolicyNumber : '',
+            insuranceSumInsured: seed ? seed.insuranceSumInsured : '',
+            insuranceExpiry: seed ? seed.insuranceExpiry : '',
+            insuranceTPA: seed ? seed.insuranceTPA : '',
+            bloodGroup: seed ? seed.bloodGroup : (m.bloodGroup || ''),
+            colorTheme: seed ? seed.colorTheme : (m.colorTheme || 'teal'),
+            ...m
+          };
+        });
+      } catch (e) {
+        console.error("Failed to parse saved members", e);
+      }
+    }
+    return initialMembers;
   });
 
   const [activeMemberId, setActiveMemberId] = useState(() => {
@@ -594,7 +617,15 @@ export const HealthProvider = ({ children }) => {
           dueDate: m.dueDate || '',
           newbornMode: m.newbornMode || false,
           birthDate: m.birthDate || '',
-          mobile: m.mobile || ''
+          mobile: m.mobile || '',
+          abhaId: m.abhaId || '',
+          abhaAddress: m.abhaAddress || '',
+          insuranceProvider: m.insuranceProvider || '',
+          insurancePolicyName: m.insurancePolicyName || '',
+          insurancePolicyNumber: m.insurancePolicyNumber || '',
+          insuranceSumInsured: m.insuranceSumInsured || '',
+          insuranceExpiry: m.insuranceExpiry || '',
+          insuranceTPA: m.insuranceTPA || ''
         });
         memberIdMap[m.id] = docRef.id;
       }
@@ -818,7 +849,15 @@ export const HealthProvider = ({ children }) => {
       dueDate: member.dueDate || '',
       newbornMode: member.newbornMode || false,
       birthDate: member.birthDate || '',
-      mobile: member.mobile || ''
+      mobile: member.mobile || '',
+      abhaId: member.abhaId || '',
+      abhaAddress: member.abhaAddress || '',
+      insuranceProvider: member.insuranceProvider || '',
+      insurancePolicyName: member.insurancePolicyName || '',
+      insurancePolicyNumber: member.insurancePolicyNumber || '',
+      insuranceSumInsured: member.insuranceSumInsured || '',
+      insuranceExpiry: member.insuranceExpiry || '',
+      insuranceTPA: member.insuranceTPA || ''
     };
 
     if (isCloudActive) {
@@ -859,7 +898,15 @@ export const HealthProvider = ({ children }) => {
       dueDate: updatedFields.dueDate || '',
       newbornMode: updatedFields.newbornMode || false,
       birthDate: updatedFields.birthDate || '',
-      mobile: updatedFields.mobile || ''
+      mobile: updatedFields.mobile || '',
+      abhaId: updatedFields.abhaId || '',
+      abhaAddress: updatedFields.abhaAddress || '',
+      insuranceProvider: updatedFields.insuranceProvider || '',
+      insurancePolicyName: updatedFields.insurancePolicyName || '',
+      insurancePolicyNumber: updatedFields.insurancePolicyNumber || '',
+      insuranceSumInsured: updatedFields.insuranceSumInsured || '',
+      insuranceExpiry: updatedFields.insuranceExpiry || '',
+      insuranceTPA: updatedFields.insuranceTPA || ''
     };
 
     if (isCloudActive) {
@@ -954,6 +1001,72 @@ export const HealthProvider = ({ children }) => {
     // Local mode fallback
     setVaccinations(prev => prev.map(v => v.id === vacId ? { ...v, status, dateGiven: status === 'Given' ? date || new Date().toISOString().split('T')[0] : '' } : v));
     addToast('Vaccination updated!', 'info');
+  };
+
+  const addVaccination = async (memberId, vac) => {
+    const targetId = memberId === 'household' ? 'owner' : memberId;
+    const isEdit = !!vac.id;
+    const vacId = vac.id || 'v_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+
+    const data = {
+      memberId: targetId,
+      name: vac.name,
+      doseNumber: vac.doseNumber || '1',
+      dateDue: vac.dateDue || '',
+      dateGiven: vac.dateGiven || '',
+      status: vac.status || 'Pending',
+      hospital: vac.hospital || '',
+      batchNumber: vac.batchNumber || '',
+      ageDue: vac.ageDue || 'Custom'
+    };
+
+    if (isCloudActive) {
+      try {
+        if (isEdit) {
+          const docRef = doc(db, 'vaccinations', vac.id);
+          await updateDoc(docRef, data);
+          await writeAuditLog('UPDATE_VACCINATION');
+        } else {
+          await addDoc(collection(db, 'vaccinations'), {
+            userId: currentUser.uid,
+            ...data
+          });
+          await writeAuditLog('ADD_VACCINATION');
+        }
+        addToast(isEdit ? 'Vaccination record updated!' : 'Vaccination record added!', 'success');
+        return;
+      } catch (e) {
+        console.error("Firestore save vaccination error:", e);
+        addToast("Firestore error: " + e.message, "danger");
+      }
+    }
+
+    // Local mode fallback
+    if (isEdit) {
+      setVaccinations(prev => prev.map(v => v.id === vac.id ? { ...v, ...data } : v));
+    } else {
+      setVaccinations(prev => [...prev, { id: vacId, ...data }]);
+    }
+    addToast(isEdit ? 'Vaccination record updated!' : 'Vaccination record added!', 'success');
+  };
+
+  const deleteVaccination = async (vacId) => {
+    if (isCloudActive) {
+      try {
+        const docRef = doc(db, 'vaccinations', vacId);
+        await deleteDoc(docRef);
+        await writeAuditLog('DELETE_VACCINATION');
+        addToast('Vaccination record deleted!', 'info');
+        return;
+      } catch (e) {
+        console.error("Firestore delete vaccination error:", e);
+        addToast("Firestore error: " + e.message, "danger");
+      }
+    }
+
+    // Local mode fallback
+    setVaccinations(prev => prev.filter(v => v.id !== vacId));
+    addToast('Vaccination record deleted!', 'info');
   };
 
   const addMedicine = async (memberId, med) => {
@@ -1362,8 +1475,8 @@ export const HealthProvider = ({ children }) => {
       vaccinations: vaccinations.filter(v => v.memberId === activeMemberIdForData), allVaccinations: vaccinations,
       medicines: medicines[activeMemberIdForData] || [], allMedicines: medicines,
       appointments: appointments.filter(a => a.memberId === activeMemberIdForData), allAppointments: appointments,
-      recentOrders, addFamilyMember, updateFamilyMember, updateMemberAvatar, logVitals, updateVaccinationStatus, addMedicine, logMedicineDose, orderMedicines, bookAppointment,
-      uploadedRecords, saveUploadedRecord, deleteUploadedRecord,
+      recentOrders, addFamilyMember, updateFamilyMember, updateMemberAvatar, logVitals, updateVaccinationStatus, addVaccination, deleteVaccination, addMedicine, logMedicineDose, orderMedicines, bookAppointment,
+      uploadedRecords, setUploadedRecords, saveUploadedRecord, deleteUploadedRecord,
       wearableSensors, setWearableSensors, toasts, addToast, removeToast,
       sampleCollections, bookSampleCollection, updateCollectionStatus, cancelCollection, markCollectionSynced,
       medicalHistories, addMedicalHistory,

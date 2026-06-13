@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useHealth } from '../context/HealthContext';
 import ProfileSelectionPrompt from '../components/ProfileSelectionPrompt';
 import Icon from '../components/Icon';
-import { runOCR } from '../services/gemini';
+import { runOCR, runVaccineOCR } from '../services/gemini';
 
 export function RemindersTab() {
   const {
@@ -13,6 +13,8 @@ export function RemindersTab() {
     orderMedicines,
     vaccinations,
     updateVaccinationStatus,
+    addVaccination,
+    deleteVaccination,
     geminiKey,
     addMedicine,
     uploadedRecords,

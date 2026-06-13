@@ -16,6 +16,8 @@ export function MemberProfileManager() {
 
   const [showAdd, setShowAdd] = useState(false);
   const [editingMember, setEditingMember] = useState(null);
+  const [showAbhaSectionAdd, setShowAbhaSectionAdd] = useState(false);
+  const [showAbhaSectionEdit, setShowAbhaSectionEdit] = useState(false);
   
   const initialFormState = { 
     name: '', 
@@ -31,7 +33,15 @@ export function MemberProfileManager() {
     weight: '', 
     bloodGroup: '', 
     avatar: '', 
-    colorTheme: 'teal' 
+    colorTheme: 'teal',
+    abhaId: '',
+    abhaAddress: '',
+    insuranceProvider: '',
+    insurancePolicyName: '',
+    insurancePolicyNumber: '',
+    insuranceSumInsured: '',
+    insuranceExpiry: '',
+    insuranceTPA: ''
   };
 
   const [form, setForm] = useState({ ...initialFormState });
@@ -140,6 +150,8 @@ export function MemberProfileManager() {
                   {m.bloodGroup && <span className="alert-badge info" style={{ fontSize: '0.55rem', background: 'rgba(239, 68, 68, 0.12)', border: '1px solid rgba(239, 68, 68, 0.3)', color: '#f87171' }}>🩸 {m.bloodGroup}</span>}
                   {m.birthDate && <span className="alert-badge" style={{ fontSize: '0.55rem', background: 'var(--bg-primary)', color: 'var(--text-secondary)' }}>🎂 {m.birthDate}</span>}
                   {m.age && <span className="alert-badge" style={{ fontSize: '0.55rem', background: 'var(--bg-primary)', color: 'var(--text-secondary)' }}>{m.age} yrs</span>}
+                  {m.abhaId && <span className="alert-badge success" style={{ fontSize: '0.55rem', background: 'var(--color-success-light)', color: 'var(--color-success)', fontWeight: 'bold' }}>🆔 ABHA</span>}
+                  {m.insurancePolicyNumber && <span className="alert-badge info" style={{ fontSize: '0.55rem', background: 'var(--color-info-light)', color: 'var(--color-info)', fontWeight: 'bold' }}>🛡️ Insured</span>}
                 </div>
               </div>
             </div>
@@ -330,6 +342,61 @@ export function MemberProfileManager() {
                   </select>
                 </div>
               </div>
+
+              {/* Collapsible ABHA & Insurance Section */}
+              <div style={{ margin: '1rem 0', padding: '0.75rem', borderRadius: '12px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)' }}>
+                <div 
+                  onClick={() => setShowAbhaSectionAdd(!showAbhaSectionAdd)} 
+                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
+                >
+                  <strong style={{ fontSize: '0.72rem', color: 'var(--color-primary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    ABHA ID & Health Insurance (Optional)
+                  </strong>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{showAbhaSectionAdd ? '▲' : '▼'}</span>
+                </div>
+                {showAbhaSectionAdd && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem', marginTop: '0.75rem' }}>
+                    <div className="form-group">
+                      <label>ABHA ID (14 digits)</label>
+                      <input type="text" className="form-control" value={form.abhaId} onChange={e => setForm({...form, abhaId: e.target.value})} placeholder="91-1234-5678-9012" />
+                    </div>
+                    <div className="form-group">
+                      <label>ABHA Address</label>
+                      <input type="text" className="form-control" value={form.abhaAddress} onChange={e => setForm({...form, abhaAddress: e.target.value})} placeholder="username@abdm" />
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                      <div className="form-group">
+                        <label>Insurer</label>
+                        <input type="text" className="form-control" value={form.insuranceProvider} onChange={e => setForm({...form, insuranceProvider: e.target.value})} placeholder="e.g. Star Health" />
+                      </div>
+                      <div className="form-group">
+                        <label>Policy Name</label>
+                        <input type="text" className="form-control" value={form.insurancePolicyName} onChange={e => setForm({...form, insurancePolicyName: e.target.value})} placeholder="e.g. Family Optima" />
+                      </div>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                      <div className="form-group">
+                        <label>Policy Number</label>
+                        <input type="text" className="form-control" value={form.insurancePolicyNumber} onChange={e => setForm({...form, insurancePolicyNumber: e.target.value})} placeholder="POL-123456" />
+                      </div>
+                      <div className="form-group">
+                        <label>Sum Insured</label>
+                        <input type="text" className="form-control" value={form.insuranceSumInsured} onChange={e => setForm({...form, insuranceSumInsured: e.target.value})} placeholder="e.g. 10,00,000" />
+                      </div>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                      <div className="form-group">
+                        <label>Expiry Date</label>
+                        <input type="date" className="form-control" value={form.insuranceExpiry} onChange={e => setForm({...form, insuranceExpiry: e.target.value})} />
+                      </div>
+                      <div className="form-group">
+                        <label>Third Party Admin (TPA)</label>
+                        <input type="text" className="form-control" value={form.insuranceTPA} onChange={e => setForm({...form, insuranceTPA: e.target.value})} placeholder="e.g. Medi Assist" />
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
               
               <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '0.5rem' }}>Register Profile</button>
             </form>
@@ -513,6 +580,61 @@ export function MemberProfileManager() {
                     <option value="true">Yes</option>
                   </select>
                 </div>
+              </div>
+
+              {/* Collapsible ABHA & Insurance Section */}
+              <div style={{ margin: '1rem 0', padding: '0.75rem', borderRadius: '12px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)' }}>
+                <div 
+                  onClick={() => setShowAbhaSectionEdit(!showAbhaSectionEdit)} 
+                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
+                >
+                  <strong style={{ fontSize: '0.72rem', color: 'var(--color-primary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    ABHA ID & Health Insurance (Optional)
+                  </strong>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{showAbhaSectionEdit ? '▲' : '▼'}</span>
+                </div>
+                {showAbhaSectionEdit && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem', marginTop: '0.75rem' }}>
+                    <div className="form-group">
+                      <label>ABHA ID (14 digits)</label>
+                      <input type="text" className="form-control" value={editForm.abhaId || ''} onChange={e => setEditForm({...editForm, abhaId: e.target.value})} placeholder="91-1234-5678-9012" />
+                    </div>
+                    <div className="form-group">
+                      <label>ABHA Address</label>
+                      <input type="text" className="form-control" value={editForm.abhaAddress || ''} onChange={e => setEditForm({...editForm, abhaAddress: e.target.value})} placeholder="username@abdm" />
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                      <div className="form-group">
+                        <label>Insurer</label>
+                        <input type="text" className="form-control" value={editForm.insuranceProvider || ''} onChange={e => setEditForm({...editForm, insuranceProvider: e.target.value})} placeholder="e.g. Star Health" />
+                      </div>
+                      <div className="form-group">
+                        <label>Policy Name</label>
+                        <input type="text" className="form-control" value={editForm.insurancePolicyName || ''} onChange={e => setEditForm({...editForm, insurancePolicyName: e.target.value})} placeholder="e.g. Family Optima" />
+                      </div>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                      <div className="form-group">
+                        <label>Policy Number</label>
+                        <input type="text" className="form-control" value={editForm.insurancePolicyNumber || ''} onChange={e => setEditForm({...editForm, insurancePolicyNumber: e.target.value})} placeholder="POL-123456" />
+                      </div>
+                      <div className="form-group">
+                        <label>Sum Insured</label>
+                        <input type="text" className="form-control" value={editForm.insuranceSumInsured || ''} onChange={e => setEditForm({...editForm, insuranceSumInsured: e.target.value})} placeholder="e.g. 10,00,000" />
+                      </div>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                      <div className="form-group">
+                        <label>Expiry Date</label>
+                        <input type="date" className="form-control" value={editForm.insuranceExpiry || ''} onChange={e => setEditForm({...editForm, insuranceExpiry: e.target.value})} />
+                      </div>
+                      <div className="form-group">
+                        <label>Third Party Admin (TPA)</label>
+                        <input type="text" className="form-control" value={editForm.insuranceTPA || ''} onChange={e => setEditForm({...editForm, insuranceTPA: e.target.value})} placeholder="e.g. Medi Assist" />
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
               
               <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '0.5rem' }}>Save Details</button>

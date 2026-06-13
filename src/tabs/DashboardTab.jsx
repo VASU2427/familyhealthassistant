@@ -32,6 +32,12 @@ export function DashboardTab() {
   } = useHealth();
 
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showAbhaSectionAddDash, setShowAbhaSectionAddDash] = useState(false);
+  const [showQrModal, setShowQrModal] = useState(false);
+  const [qrModalData, setQrModalData] = useState(null);
+  const [showInsuranceModal, setShowInsuranceModal] = useState(false);
+  const [insuranceModalData, setInsuranceModalData] = useState(null);
+
   const [addForm, setAddForm] = useState({
     name: '',
     relation: 'Spouse',
@@ -46,7 +52,15 @@ export function DashboardTab() {
     weight: '',
     bloodGroup: '',
     avatar: '',
-    colorTheme: 'teal'
+    colorTheme: 'teal',
+    abhaId: '',
+    abhaAddress: '',
+    insuranceProvider: '',
+    insurancePolicyName: '',
+    insurancePolicyNumber: '',
+    insuranceSumInsured: '',
+    insuranceExpiry: '',
+    insuranceTPA: ''
   });
 
   const [showAddHistoryModal, setShowAddHistoryModal] = useState(false);
@@ -94,7 +108,15 @@ export function DashboardTab() {
       weight: '',
       bloodGroup: '',
       avatar: '',
-      colorTheme: 'teal'
+      colorTheme: 'teal',
+      abhaId: '',
+      abhaAddress: '',
+      insuranceProvider: '',
+      insurancePolicyName: '',
+      insurancePolicyNumber: '',
+      insuranceSumInsured: '',
+      insuranceExpiry: '',
+      insuranceTPA: ''
     });
   };
 
@@ -256,6 +278,160 @@ export function DashboardTab() {
 
       {activeMemberId !== 'household' && (
         <>
+          {/* ABHA ID & Health Insurance Cards */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '0.5rem' }}>
+            {/* ABHA Card */}
+            <div className="glass-panel" style={{ 
+              background: `linear-gradient(135deg, ${themeColors[activeMember?.colorTheme || 'teal']?.primary || 'var(--color-primary)'}e8 0%, ${themeColors[activeMember?.colorTheme || 'teal']?.primary || 'var(--color-primary)'}99 100%)`,
+              color: '#ffffff',
+              borderRadius: '16px',
+              padding: '1rem',
+              position: 'relative',
+              overflow: 'hidden',
+              boxShadow: '0 8px 24px rgba(14, 159, 110, 0.15)',
+              border: 'none',
+              textAlign: 'left'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.25rem' }}>
+                <div>
+                  <span style={{ fontSize: '0.52rem', textTransform: 'uppercase', letterSpacing: '1px', opacity: 0.9, display: 'block', fontWeight: 'bold' }}>Ayushman Bharat Digital Mission</span>
+                  <strong style={{ fontSize: '0.82rem', letterSpacing: '-0.01em' }}>ABHA Health Card</strong>
+                </div>
+                <span style={{ fontSize: '1.4rem', filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.1))' }}>🆔</span>
+              </div>
+              
+              {activeMember.abhaId ? (
+                <>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '0.75rem 0' }}>
+                    <span style={{ 
+                      fontFamily: 'monospace', 
+                      fontSize: '1.15rem', 
+                      fontWeight: 'bold', 
+                      letterSpacing: '2px',
+                      textShadow: '0 1px 2px rgba(0,0,0,0.2)'
+                    }}>
+                      {activeMember.abhaId}
+                    </span>
+                    <button 
+                      onClick={() => {
+                        navigator.clipboard.writeText(activeMember.abhaId);
+                        alert('ABHA ID copied to clipboard!');
+                      }} 
+                      style={{ background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: '6px', color: '#fff', padding: '0.2rem 0.4rem', cursor: 'pointer', fontSize: '0.58rem', display: 'flex', alignItems: 'center', gap: '2px' }}
+                    >
+                      📋 Copy
+                    </button>
+                  </div>
+                  
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: '1rem', borderTop: '1px solid rgba(255,255,255,0.15)', paddingTop: '0.75rem' }}>
+                    <div style={{ fontSize: '0.62rem', opacity: 0.9 }}>
+                      <div style={{ textTransform: 'uppercase', fontSize: '0.48rem', opacity: 0.7 }}>Health Address</div>
+                      <strong style={{ fontSize: '0.68rem' }}>{activeMember.abhaAddress || `${activeMember.name.toLowerCase().replace(/\s+/g, '')}@abdm`}</strong>
+                    </div>
+                    <button 
+                      onClick={() => {
+                        setQrModalData({ name: activeMember.name, abhaId: activeMember.abhaId, abhaAddress: activeMember.abhaAddress });
+                        setShowQrModal(true);
+                      }}
+                      style={{ background: '#ffffff', color: themeColors[activeMember?.colorTheme || 'teal']?.primary || 'var(--color-primary)', border: 'none', borderRadius: '8px', padding: '0.35rem 0.65rem', fontWeight: 'bold', fontSize: '0.62rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', boxShadow: '0 2px 6px rgba(0,0,0,0.1)' }}
+                    >
+                      🔍 View QR
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div style={{ padding: '0.5rem 0', textAlign: 'center' }}>
+                  <span style={{ fontSize: '0.7rem', opacity: 0.85, display: 'block', marginBottom: '0.5rem' }}>No ABHA ID linked to this profile.</span>
+                  <button 
+                    onClick={() => setActiveTab('profiles')}
+                    style={{ background: '#ffffff', color: themeColors[activeMember?.colorTheme || 'teal']?.primary || 'var(--color-primary)', border: 'none', borderRadius: '8px', padding: '0.35rem 0.75rem', fontWeight: 'bold', fontSize: '0.62rem', cursor: 'pointer', boxShadow: '0 2px 6px rgba(0,0,0,0.1)' }}
+                  >
+                    Link ABHA ID
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Insurance Card */}
+            <div className="glass-panel" style={{ 
+              background: 'var(--bg-secondary)',
+              borderRadius: '16px',
+              padding: '1rem',
+              boxShadow: 'var(--shadow-sm)',
+              textAlign: 'left',
+              position: 'relative'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <span style={{ fontSize: '1.1rem' }}>🛡️</span>
+                  <div>
+                    <strong style={{ fontSize: '0.78rem', color: 'var(--text-primary)', display: 'block' }}>
+                      {activeMember.insuranceProvider || 'Health Insurance'}
+                    </strong>
+                    <span style={{ fontSize: '0.62rem', color: 'var(--text-secondary)' }}>
+                      {activeMember.insurancePolicyName || 'No policy registered'}
+                    </span>
+                  </div>
+                </div>
+                
+                {activeMember.insuranceExpiry && (
+                  <span className={`alert-badge ${
+                    Math.ceil((new Date(activeMember.insuranceExpiry) - new Date()) / (1000 * 60 * 60 * 24)) <= 30
+                      ? 'warning'
+                      : 'success'
+                  }`} style={{ fontSize: '0.52rem', padding: '0.1rem 0.3rem' }}>
+                    {Math.ceil((new Date(activeMember.insuranceExpiry) - new Date()) / (1000 * 60 * 60 * 24)) <= 0
+                      ? 'Expired'
+                      : Math.ceil((new Date(activeMember.insuranceExpiry) - new Date()) / (1000 * 60 * 60 * 24)) <= 30
+                      ? 'Expiring soon'
+                      : 'Active'
+                  }
+                  </span>
+                )}
+              </div>
+
+              {activeMember.insurancePolicyNumber ? (
+                <div style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '0.35rem', marginTop: '0.5rem', background: 'var(--bg-primary)', padding: '0.65rem', borderRadius: '10px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Policy No:</span>
+                    <strong style={{ color: 'var(--text-primary)' }}>{activeMember.insurancePolicyNumber}</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Sum Insured:</span>
+                    <strong style={{ color: 'var(--color-primary)', fontWeight: '800' }}>₹{activeMember.insuranceSumInsured}</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Expiry Date:</span>
+                    <strong>{activeMember.insuranceExpiry}</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px dashed var(--border-color)', paddingTop: '0.35rem', marginTop: '0.15rem' }}>
+                    <span>TPA Partner:</span>
+                    <span>{activeMember.insuranceTPA || 'Direct Settlement'}</span>
+                  </div>
+                  <button 
+                    onClick={() => {
+                      setInsuranceModalData(activeMember);
+                      setShowInsuranceModal(true);
+                    }}
+                    style={{ background: 'var(--color-primary-light)', color: 'var(--color-primary)', border: 'none', borderRadius: '6px', padding: '0.3rem 0', fontWeight: 'bold', fontSize: '0.6rem', cursor: 'pointer', marginTop: '0.35rem', width: '100%' }}
+                  >
+                    View Coverage T&C & Claim Helpline
+                  </button>
+                </div>
+              ) : (
+                <div style={{ padding: '0.75rem 0', textAlign: 'center', background: 'var(--bg-primary)', borderRadius: '10px' }}>
+                  <span style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.4rem' }}>Secure your family. Link active health insurance policies.</span>
+                  <button 
+                    onClick={() => setActiveTab('profiles')}
+                    style={{ background: 'var(--color-primary-light)', color: 'var(--color-primary)', border: 'none', borderRadius: '6px', padding: '0.3rem 0.6rem', fontWeight: 'bold', fontSize: '0.6rem', cursor: 'pointer' }}
+                  >
+                    Add Policy Details
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+
           {/* Allergies & Chronic Conditions Card */}
           <div className="glass-panel" style={{ padding: '0.85rem', marginBottom: '0.2rem', borderLeft: '4px solid #ef4444', background: 'var(--bg-secondary)', borderRadius: '12px', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
             <span style={{ fontSize: '1.25rem' }}>⚠️</span>
@@ -446,6 +622,63 @@ export function DashboardTab() {
           </div>
         </div>
       </div>
+
+      {/* Family ABHA & Insurance Portfolio Summary (Household View Only) */}
+      {activeMemberId === 'household' && (
+        <div style={{ marginTop: '0.2rem' }}>
+          <strong style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', textAlign: 'left', marginBottom: '0.5rem' }}>
+            Family Health Cards & Insurance
+          </strong>
+          <div className="glass-panel" style={{ padding: '0.85rem', background: 'var(--bg-secondary)', borderRadius: '12px', textAlign: 'left' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+              {members.map((m, idx) => (
+                <div key={m.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '0.5rem', borderBottom: idx === members.length - 1 ? 'none' : '1px solid var(--border-color)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <div style={{ width: '30px', height: '30px', borderRadius: '50%', overflow: 'hidden', flexShrink: 0, border: `1.5px solid ${themeColors[m.colorTheme || 'teal']?.primary || 'var(--border-color)'}` }}>
+                      {renderAvatar(m, '100%')}
+                    </div>
+                    <div>
+                      <strong style={{ fontSize: '0.72rem', color: 'var(--text-primary)', display: 'block' }}>{m.name}</strong>
+                      <span style={{ fontSize: '0.58rem', color: 'var(--text-secondary)' }}>
+                        ABHA: {m.abhaId ? 'Linked' : 'Not set'} &bull; Ins: {m.insuranceProvider ? 'Active' : 'Not set'}
+                      </span>
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    {m.insuranceSumInsured ? (
+                      <strong style={{ fontSize: '0.7rem', color: 'var(--color-primary)', display: 'block' }}>₹{m.insuranceSumInsured} Cover</strong>
+                    ) : (
+                      <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)' }}>No Cover</span>
+                    )}
+                    {m.abhaAddress && <span style={{ fontSize: '0.55rem', color: 'var(--text-secondary)', display: 'block' }}>{m.abhaAddress}</span>}
+                  </div>
+                </div>
+              ))}
+              
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.25rem', paddingTop: '0.5rem', borderTop: '1px dashed var(--border-color)' }}>
+                <span style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>Total Household Cover:</span>
+                <strong style={{ fontSize: '0.75rem', color: 'var(--color-success)', fontWeight: '800' }}>
+                  ₹{(() => {
+                    let total = 0;
+                    const policies = new Set();
+                    members.forEach(m => {
+                      if (m.insurancePolicyNumber && m.insuranceSumInsured) {
+                        const key = `${m.insuranceProvider}-${m.insurancePolicyNumber}`;
+                        if (!policies.has(key)) {
+                          policies.add(key);
+                          const num = parseInt(m.insuranceSumInsured.replace(/,/g, ''));
+                          if (!isNaN(num)) total += num;
+                        }
+                      }
+                    });
+                    return total.toLocaleString('en-IN');
+                  })()}
+                </strong>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Active Alerts */}
       <div style={{ marginTop: '0.2rem' }}>
@@ -684,8 +917,145 @@ export function DashboardTab() {
                   </select>
                 </div>
               </div>
+
+              {/* Collapsible ABHA & Insurance Section */}
+              <div style={{ margin: '0.5rem 0', padding: '0.5rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)' }}>
+                <div 
+                  onClick={() => setShowAbhaSectionAddDash(!showAbhaSectionAddDash)} 
+                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
+                >
+                  <strong style={{ fontSize: '0.65rem', color: 'var(--color-primary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    ABHA & Insurance (Optional)
+                  </strong>
+                  <span style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>{showAbhaSectionAddDash ? '▲' : '▼'}</span>
+                </div>
+                {showAbhaSectionAddDash && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginTop: '0.5rem', textAlign: 'left' }}>
+                    <div className="form-group" style={{ marginBottom: '0.5rem' }}>
+                      <label style={{ fontSize: '0.7rem' }}>ABHA ID (14 digits)</label>
+                      <input type="text" className="form-control" style={{ padding: '0.4rem 0.6rem', fontSize: '0.75rem' }} value={addForm.abhaId} onChange={e => setAddForm({...addForm, abhaId: e.target.value})} placeholder="91-1234-5678-9012" />
+                    </div>
+                    <div className="form-group" style={{ marginBottom: '0.5rem' }}>
+                      <label style={{ fontSize: '0.7rem' }}>ABHA Address</label>
+                      <input type="text" className="form-control" style={{ padding: '0.4rem 0.6rem', fontSize: '0.75rem' }} value={addForm.abhaAddress} onChange={e => setAddForm({...addForm, abhaAddress: e.target.value})} placeholder="username@abdm" />
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.4rem' }}>
+                      <div className="form-group" style={{ marginBottom: '0.5rem' }}>
+                        <label style={{ fontSize: '0.7rem' }}>Insurer</label>
+                        <input type="text" className="form-control" style={{ padding: '0.4rem 0.6rem', fontSize: '0.75rem' }} value={addForm.insuranceProvider} onChange={e => setAddForm({...addForm, insuranceProvider: e.target.value})} placeholder="e.g. Star Health" />
+                      </div>
+                      <div className="form-group" style={{ marginBottom: '0.5rem' }}>
+                        <label style={{ fontSize: '0.7rem' }}>Policy Name</label>
+                        <input type="text" className="form-control" style={{ padding: '0.4rem 0.6rem', fontSize: '0.75rem' }} value={addForm.insurancePolicyName} onChange={e => setAddForm({...addForm, insurancePolicyName: e.target.value})} placeholder="e.g. Family Optima" />
+                      </div>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.4rem' }}>
+                      <div className="form-group" style={{ marginBottom: '0.5rem' }}>
+                        <label style={{ fontSize: '0.7rem' }}>Policy Number</label>
+                        <input type="text" className="form-control" style={{ padding: '0.4rem 0.6rem', fontSize: '0.75rem' }} value={addForm.insurancePolicyNumber} onChange={e => setAddForm({...addForm, insurancePolicyNumber: e.target.value})} placeholder="POL-123456" />
+                      </div>
+                      <div className="form-group" style={{ marginBottom: '0.5rem' }}>
+                        <label style={{ fontSize: '0.7rem' }}>Sum Insured</label>
+                        <input type="text" className="form-control" style={{ padding: '0.4rem 0.6rem', fontSize: '0.75rem' }} value={addForm.insuranceSumInsured} onChange={e => setAddForm({...addForm, insuranceSumInsured: e.target.value})} placeholder="e.g. 10,00,000" />
+                      </div>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.4rem' }}>
+                      <div className="form-group" style={{ marginBottom: '0.5rem' }}>
+                        <label style={{ fontSize: '0.7rem' }}>Expiry Date</label>
+                        <input type="date" className="form-control" style={{ padding: '0.4rem 0.6rem', fontSize: '0.75rem' }} value={addForm.insuranceExpiry} onChange={e => setAddForm({...addForm, insuranceExpiry: e.target.value})} />
+                      </div>
+                      <div className="form-group" style={{ marginBottom: '0.5rem' }}>
+                        <label style={{ fontSize: '0.7rem' }}>TPA Partner</label>
+                        <input type="text" className="form-control" style={{ padding: '0.4rem 0.6rem', fontSize: '0.75rem' }} value={addForm.insuranceTPA} onChange={e => setAddForm({...addForm, insuranceTPA: e.target.value})} placeholder="Medi Assist" />
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+              
               <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '0.5rem', padding: '0.5rem' }}>Register Profile</button>
             </form>
+          </div>
+        </div>
+      {/* ABHA QR Code Modal */}
+      {showQrModal && qrModalData && (
+        <div className="bottom-sheet-overlay" style={{ zIndex: 1200 }} onClick={() => setShowQrModal(false)}>
+          <div className="bottom-sheet" style={{ maxWidth: '360px', margin: '0 auto', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+            <div className="sheet-handle"></div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <strong style={{ fontSize: '0.9rem' }}>ABHA ID Digital QR</strong>
+              <button onClick={() => setShowQrModal(false)} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '1.2rem', color: 'var(--text-secondary)' }}>×</button>
+            </div>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem', padding: '1rem 0' }}>
+              <div style={{ background: '#ffffff', padding: '0.75rem', borderRadius: '12px', boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border-color)' }}>
+                <img 
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=https://ndhm.gov.in/abha?id=${qrModalData.abhaId}&address=${qrModalData.abhaAddress}`} 
+                  alt="ABHA QR Code" 
+                  style={{ width: '160px', height: '160px' }}
+                />
+              </div>
+              <span style={{ fontSize: '0.52rem', color: 'var(--text-muted)' }}>Scan with any ABDM-enabled health app to share digital records</span>
+              
+              <div style={{ width: '100%', background: 'var(--bg-primary)', padding: '0.75rem', borderRadius: '10px', marginTop: '0.5rem', textAlign: 'left' }}>
+                <div style={{ fontSize: '0.65rem', marginBottom: '0.25rem', color: 'var(--text-primary)' }}>Name: <strong>{qrModalData.name}</strong></div>
+                <div style={{ fontSize: '0.65rem', marginBottom: '0.25rem', color: 'var(--text-primary)' }}>ABHA ID: <strong>{qrModalData.abhaId}</strong></div>
+                <div style={{ fontSize: '0.65rem', color: 'var(--text-primary)' }}>Health Address: <strong>{qrModalData.abhaAddress}</strong></div>
+              </div>
+            </div>
+            
+            <button className="btn btn-secondary" onClick={() => setShowQrModal(false)} style={{ width: '100%', fontSize: '0.75rem', height: '36px' }}>Close</button>
+          </div>
+        </div>
+      )}
+
+      {/* Insurance T&C & Claims Modal */}
+      {showInsuranceModal && insuranceModalData && (
+        <div className="bottom-sheet-overlay" style={{ zIndex: 1200 }} onClick={() => setShowInsuranceModal(false)}>
+          <div className="bottom-sheet" style={{ maxHeight: '80vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+            <div className="sheet-handle"></div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+              <strong style={{ fontSize: '0.9rem' }}>🛡️ Policy Coverage & Details</strong>
+              <button onClick={() => setShowInsuranceModal(false)} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '1.2rem', color: 'var(--text-secondary)' }}>×</button>
+            </div>
+            
+            <div style={{ textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              <div style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>
+                <span style={{ fontSize: '0.58rem', textTransform: 'uppercase', color: 'var(--color-primary)', fontWeight: 'bold' }}>{insuranceModalData.insuranceProvider}</span>
+                <h4 style={{ margin: 0, fontSize: '0.95rem', color: 'var(--text-primary)' }}>{insuranceModalData.insurancePolicyName}</h4>
+                <div style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', marginTop: '0.15rem' }}>Policy Number: <strong>{insuranceModalData.insurancePolicyNumber}</strong></div>
+              </div>
+              
+              <div>
+                <strong style={{ fontSize: '0.7rem', display: 'block', marginBottom: '0.25rem', color: 'var(--text-primary)' }}>🏥 Key Coverage Terms & Conditions:</strong>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                  <div style={{ background: 'var(--bg-primary)', padding: '0.5rem', borderRadius: '8px', fontSize: '0.65rem', color: 'var(--text-secondary)' }}>
+                    🏢 <strong>Room Rent Limit:</strong> Single Private AC Room fully covered. Deluxe rooms subject to 15% co-pay.
+                  </div>
+                  <div style={{ background: 'var(--bg-primary)', padding: '0.5rem', borderRadius: '8px', fontSize: '0.65rem', color: 'var(--text-secondary)' }}>
+                    ⌛ <strong>Pre-Existing Diseases:</strong> Waiting period of 24 months (2 years) from policy inception.
+                  </div>
+                  <div style={{ background: 'var(--bg-primary)', padding: '0.5rem', borderRadius: '8px', fontSize: '0.65rem', color: 'var(--text-secondary)' }}>
+                    👶 <strong>Maternity Cover (if active):</strong> Covered up to ₹1,00,000 for normal and ₹1,50,000 for C-section (Lakshmi's policy active).
+                  </div>
+                  <div style={{ background: 'var(--bg-primary)', padding: '0.5rem', borderRadius: '8px', fontSize: '0.65rem', color: 'var(--text-secondary)' }}>
+                    💸 <strong>Co-Payment:</strong> 0% for treatments in Network Hospitals; 10% for non-network hospitals.
+                  </div>
+                </div>
+              </div>
+              
+              <div style={{ background: 'var(--color-danger-light)', border: '1px solid var(--color-danger)', borderRadius: '10px', padding: '0.75rem', marginTop: '0.25rem' }}>
+                <strong style={{ fontSize: '0.7rem', color: 'var(--color-danger)', display: 'block', marginBottom: '0.25rem' }}>🚨 Emergency Cashless Claims & TPA:</strong>
+                <div style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                  <div>TPA: <strong>{insuranceModalData.insuranceTPA || 'Direct Settlement'}</strong></div>
+                  <div>TPA Toll-free Helpline: <strong style={{ color: 'var(--color-danger)' }}>1800-425-4444 / 1800-102-4477</strong></div>
+                  <div>Email Support: <strong>claims@tpa-helpline.com</strong></div>
+                  <div style={{ fontSize: '0.55rem', marginTop: '0.15rem', fontStyle: 'italic', color: 'var(--text-muted)' }}>Note: Pre-authorization request must be submitted within 24 hours of emergency hospitalization.</div>
+                </div>
+              </div>
+              
+              <button className="btn btn-primary" onClick={() => setShowInsuranceModal(false)} style={{ width: '100%', fontSize: '0.75rem', marginTop: '0.5rem' }}>Done</button>
+            </div>
           </div>
         </div>
       )}
